@@ -1,0 +1,12 @@
+{
+  "id": "case-f-credit-card",
+  "name": "CASE F — Credit Card-like",
+  "description": "Synthetic image containing Luhn-valid test card number '4532 0151 1283 0366'.",
+  "synthetic": true,
+  "expectedFaces": 0,
+  "expectedPiiTypes": ["CREDIT_CARD"],
+  "expectedPiiCount": 1,
+  "expectedOrdinaryTextRegions": 0,
+  "expectedRedactedRegions": 1,
+  "expectedVerificationStatus": "PASS"
+}

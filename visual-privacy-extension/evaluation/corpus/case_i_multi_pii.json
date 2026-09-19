@@ -1,0 +1,12 @@
+{
+  "id": "case-i-multi-pii",
+  "name": "CASE I — Multiple Sensitive Regions",
+  "description": "Document image containing 5 sensitive PII items (2 emails, 2 phone numbers, 1 credit card).",
+  "synthetic": true,
+  "expectedFaces": 0,
+  "expectedPiiTypes": ["EMAIL", "EMAIL", "PHONE", "PHONE", "CREDIT_CARD"],
+  "expectedPiiCount": 5,
+  "expectedOrdinaryTextRegions": 1,
+  "expectedRedactedRegions": 5,
+  "expectedVerificationStatus": "PASS"
+}

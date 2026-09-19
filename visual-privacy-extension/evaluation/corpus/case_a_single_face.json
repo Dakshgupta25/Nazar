@@ -1,0 +1,11 @@
+{
+  "id": "case-a-single-face",
+  "name": "CASE A — Single Face",
+  "description": "Synthetic image containing one visible human face.",
+  "synthetic": true,
+  "expectedFaces": 1,
+  "expectedPiiCount": 0,
+  "expectedOrdinaryTextRegions": 0,
+  "expectedRedactedRegions": 1,
+  "expectedVerificationStatus": "PASS"
+}

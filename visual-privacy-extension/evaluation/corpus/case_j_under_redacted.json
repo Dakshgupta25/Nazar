@@ -1,0 +1,12 @@
+{
+  "id": "case-j-under-redacted",
+  "name": "CASE J — Intentionally Under-Redacted",
+  "description": "Intentionally under-redacted sanitized image payload where sensitive PII region remains un-redacted.",
+  "synthetic": true,
+  "expectedFaces": 0,
+  "expectedPiiTypes": ["EMAIL"],
+  "expectedPiiCount": 1,
+  "expectedOrdinaryTextRegions": 0,
+  "expectedRedactedRegions": 0,
+  "expectedVerificationStatus": "FAIL"
+}
