@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "NAZAR — Local Privacy Firewall",
+  "version": "0.1.0",
+  "description": "Local Privacy Firewall for AI Agents. Ensures sensitive context stays local.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "NAZAR Privacy Firewall"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
