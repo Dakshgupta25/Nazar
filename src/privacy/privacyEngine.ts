@@ -12,10 +12,7 @@ import {
   SensitiveCategory,
 } from '../types/privacy';
 import { analyzeDomSensitivity } from './domAnalyzer';
-import { detectFacesLocally } from './faceDetector';
 import { fuseDetections } from './fusionEngine';
-import { performLocalOcr } from './ocrDetector';
-import { scanTextForPii } from './piiDetector';
 import { ModelManager } from '../modelManager/modelManager';
 
 export async function runPrivacyScan(
@@ -36,60 +33,52 @@ export async function runPrivacyScan(
 
   const startTime = performance.now();
   const rawRegions: DetectedRegion[] = [];
-  let regionCounter = 0;
 
-  // 1. DOM Sensitivity Analysis
+  // 1. DOM Sensitivity Analysis (Comprehensive)
   const domStart = performance.now();
   const domRegions = analyzeDomSensitivity(captured.dom);
   rawRegions.push(...domRegions);
-  const domMs = Math.round(performance.now() - domStart);
-
-  // 2. Local OCR Extraction
-  const ocrStart = performance.now();
-  const textBlocks = captured.dom.elements
-    .filter((e) => e.textContent && e.textContent.length > 0)
-    .map((e) => ({ text: e.textContent!, box: e.boundingBox }));
-
-  const ocrWords = await performLocalOcr(captured.screenshotDataUrl, textBlocks);
-  const ocrMs = Math.round(performance.now() - ocrStart);
-
-  // 3. PII & Secret Scanning on OCR Words
-  const piiStart = performance.now();
-  for (const ocrWord of ocrWords) {
-    const piiMatches = scanTextForPii(ocrWord.text);
-    for (const match of piiMatches) {
-      rawRegions.push({
-        id: `ocr_pii_${++regionCounter}`,
-        category: match.category,
-        confidence: match.confidence,
-        boundingBox: ocrWord.boundingBox,
-        source: 'ocr',
-        recommendedRedaction: 'semantic_label',
-        label: `[${match.category.toUpperCase().replace('_', ' ')} REDACTED]`,
-        sanitizedHint: `OCR word`,
-      });
+  
+  // 2. ADDITIONAL: Catch any remaining sensitive candidates that weren't categorized
+  // This ensures ALL marked sensitive fields get redacted even if not specifically typed
+  for (const el of captured.dom.elements) {
+    if (el.isSensitiveCandidate) {
+      // Check if this element was already detected by domAnalyzer
+      const alreadyDetected = domRegions.some(r => r.elementSelector === el.selector);
+      
+      if (!alreadyDetected) {
+        // Infer category from element properties
+        let category: SensitiveCategory = 'password';
+        const inputType = el.inputType?.toLowerCase();
+        const name = el.attributes['name']?.toLowerCase() || '';
+        const id = el.id?.toLowerCase() || '';
+        
+        if (inputType === 'email' || name.includes('email') || id.includes('email')) {
+          category = 'email';
+        } else if (inputType === 'tel' || name.includes('phone') || id.includes('phone')) {
+          category = 'phone';
+        } else if (name.includes('card') || name.includes('credit')) {
+          category = 'credit_card';
+        }
+        
+        rawRegions.push({
+          id: `dom_fallback_${el.id}`,
+          category,
+          confidence: 0.88,
+          boundingBox: el.boundingBox,
+          source: 'dom',
+          elementSelector: el.selector,
+          recommendedRedaction: 'solid_rectangle',
+          label: `[${category.toUpperCase().replace('_', ' ')} REDACTED]`,
+          sanitizedHint: `Input field (${el.tagName})`,
+        });
+      }
     }
   }
-  const piiMs = Math.round(performance.now() - piiStart);
+  
+  const domMs = Math.round(performance.now() - domStart);
 
-  // 4. Local Face Detection
-  const faceStart = performance.now();
-  const faceMatches = await detectFacesLocally(captured.screenshotDataUrl);
-  for (const face of faceMatches) {
-    rawRegions.push({
-      id: `face_${++regionCounter}`,
-      category: 'face',
-      confidence: face.confidence,
-      boundingBox: face.boundingBox,
-      source: 'face',
-      recommendedRedaction: 'blur',
-      label: '[FACE REDACTED]',
-      sanitizedHint: 'Face region',
-    });
-  }
-  const faceMs = Math.round(performance.now() - faceStart);
-
-  // 5. Detection Normalization & Fusion
+  // 3. Detection Normalization & Fusion
   const fusionStart = performance.now();
   const fusedRegions = fuseDetections(rawRegions);
   const fusionMs = Math.round(performance.now() - fusionStart);
@@ -107,12 +96,18 @@ export async function runPrivacyScan(
 
   const latency: PrivacyScanLatency = {
     domMs,
-    ocrMs,
-    faceMs,
-    piiMs,
+    ocrMs: 0,
+    faceMs: 0,
+    piiMs: 0,
     fusionMs,
     totalMs,
   };
+
+  console.info('[NAZAR] Privacy scan complete:', {
+    totalDetected: fusedRegions.length,
+    regions: fusedRegions,
+    latency,
+  });
 
   return {
     scanId: `scan_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`,

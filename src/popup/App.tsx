@@ -5,7 +5,6 @@ import {
   ExtensionStatusPayload,
   MessageResponse,
   NazarMessage,
-  RunPrivacyScanMessage,
 } from '../types/messages';
 import { PrivacyScanResult } from '../types/privacy';
 import { runPrivacyScan } from '../privacy/privacyEngine';
@@ -15,15 +14,13 @@ import { ImagePrivacyFilter } from '../imageFilter/ImagePrivacyFilter';
 import { ModelStatusCard } from '../modelManager/ModelStatusCard';
 
 export const App: React.FC = () => {
-  const [status, setStatus] = useState<ExtensionStatusPayload | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [scanning, setScanning] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [capturedContext, setCapturedContext] = useState<CapturedContextPayload | null>(null);
   const [privacyResult, setPrivacyResult] = useState<PrivacyScanResult | null>(null);
-  const [activeTabName, setActiveTabName] = useState<'overview' | 'dom' | 'privacy' | 'editor'>('overview');
   const [mainTab, setMainTab] = useState<'browser-agent' | 'image-filter' | 'model-engine'>('browser-agent');
   const [approvedArtifact, setApprovedArtifact] = useState<SanitizedArtifact | null>(null);
+  const [userPrompt, setUserPrompt] = useState<string>('');
 
   useEffect(() => {
     fetchStatus();
@@ -31,12 +28,6 @@ export const App: React.FC = () => {
 
   const fetchStatus = () => {
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-      setStatus({
-        ready: true,
-        version: '0.1.0 (dev-preview)',
-        activeTabAccessible: true,
-        url: 'http://localhost/test-page.html',
-      });
       return;
     }
 
@@ -46,26 +37,34 @@ export const App: React.FC = () => {
       timestamp: Date.now(),
     };
 
-    chrome.runtime.sendMessage(message, (response: MessageResponse<ExtensionStatusPayload>) => {
-      if (chrome.runtime.lastError) {
-        setError(chrome.runtime.lastError.message || 'Failed to connect to extension service worker');
-        return;
-      }
-      if (response && response.success && response.data) {
-        setStatus(response.data);
-      } else {
-        setError(response?.error?.message || 'Failed to get status');
-      }
-    });
+    try {
+      chrome.runtime.sendMessage(message, (response: MessageResponse<ExtensionStatusPayload>) => {
+        if (chrome.runtime.lastError) {
+          console.error('[NAZAR] fetchStatus error:', chrome.runtime.lastError);
+          setError(chrome.runtime.lastError.message || 'Failed to connect to extension service worker');
+          return;
+        }
+        if (response && response.success && response.data) {
+          setError(null);
+        } else {
+          setError(response?.error?.message || 'Failed to get status');
+        }
+      });
+    } catch (err: unknown) {
+      console.error('[NAZAR] fetchStatus exception:', err);
+      setError(err instanceof Error ? err.message : 'Service worker error');
+    }
   };
 
-  const handleCapture = () => {
+  // SIMPLIFIED FLOW: Prompt → Capture → Scan → Preview
+  const handleProceed = () => {
     setLoading(true);
     setError(null);
     setPrivacyResult(null);
     setApprovedArtifact(null);
 
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+      // Fallback: Create dummy context and scan
       setTimeout(async () => {
         const dummyContext: CapturedContextPayload = {
           tabId: 1,
@@ -73,119 +72,141 @@ export const App: React.FC = () => {
           title: 'NAZAR Test Form',
           timestamp: Date.now(),
           screenshotDataUrl:
-            'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="250"><rect width="100%" height="100%" fill="%230f172a"/><text x="50%" y="50%" fill="%2338bdf8" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif">Sample Viewport</text></svg>',
+            'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="100%" height="100%" fill="%230f172a"/><text x="50" y="50" fill="%2338bdf8" font-family="sans-serif" font-size="16" font-weight="bold">User Information Form</text><rect x="50" y="100" width="500" height="40" rx="4" fill="%231e293b" stroke="%23334155"/><text x="60" y="130" fill="%23f8fafc" font-family="sans-serif" font-size="14">Name: John Doe</text><rect x="50" y="160" width="500" height="40" rx="4" fill="%231e293b" stroke="%23334155"/><text x="60" y="190" fill="%2338bdf8" font-family="sans-serif" font-size="14">Email: john@example.com</text><rect x="50" y="220" width="500" height="40" rx="4" fill="%231e293b" stroke="%23334155"/><text x="60" y="250" fill="%2338bdf8" font-family="sans-serif" font-size="14">Phone: +1-555-0123</text><rect x="50" y="280" width="500" height="40" rx="4" fill="%231e293b" stroke="%23334155"/><text x="60" y="310" fill="%2338bdf8" font-family="sans-serif" font-size="14">Card: 4111 1111 1111 1111</text></svg>',
           dom: {
             url: 'https://example.com/test-form',
             title: 'NAZAR Test Form',
             timestamp: Date.now(),
             viewport: {
-              width: 1280,
-              height: 800,
+              width: 600,
+              height: 400,
               scrollX: 0,
               scrollY: 0,
               devicePixelRatio: 1,
             },
             elements: [
               {
+                id: 'name',
+                tagName: 'input',
+                elementType: 'input',
+                selector: '#name',
+                boundingBox: { x: 50, y: 100, width: 500, height: 40, top: 100, left: 50, bottom: 140, right: 550 },
+                isVisible: true,
+                isInteractive: true,
+                attributes: { type: 'text', placeholder: 'Name' },
+                isSensitiveCandidate: true,
+              },
+              {
                 id: 'email',
                 tagName: 'input',
                 elementType: 'input',
                 selector: '#email',
-                boundingBox: { x: 50, y: 100, width: 220, height: 36, top: 100, left: 50, bottom: 136, right: 270 },
+                boundingBox: { x: 50, y: 160, width: 500, height: 40, top: 160, left: 50, bottom: 200, right: 550 },
                 isVisible: true,
                 isInteractive: true,
-                attributes: { type: 'email', placeholder: 'Enter email' },
+                attributes: { type: 'email', placeholder: 'Email' },
                 isSensitiveCandidate: true,
               },
               {
-                id: 'pwd',
+                id: 'phone',
                 tagName: 'input',
                 elementType: 'input',
-                selector: '#pwd',
-                boundingBox: { x: 50, y: 150, width: 220, height: 36, top: 150, left: 50, bottom: 186, right: 270 },
+                selector: '#phone',
+                boundingBox: { x: 50, y: 220, width: 500, height: 40, top: 220, left: 50, bottom: 260, right: 550 },
                 isVisible: true,
                 isInteractive: true,
-                attributes: { type: 'password' },
+                attributes: { type: 'tel', placeholder: 'Phone' },
+                isSensitiveCandidate: true,
+              },
+              {
+                id: 'card',
+                tagName: 'input',
+                elementType: 'input',
+                selector: '#card',
+                boundingBox: { x: 50, y: 280, width: 500, height: 40, top: 280, left: 50, bottom: 320, right: 550 },
+                isVisible: true,
+                isInteractive: true,
+                attributes: { type: 'text', placeholder: 'Card' },
                 isSensitiveCandidate: true,
               },
             ],
             stats: {
-              totalElements: 2,
-              interactiveCount: 2,
-              sensitiveCandidateCount: 2,
+              totalElements: 4,
+              interactiveCount: 4,
+              sensitiveCandidateCount: 4,
               formsCount: 1,
             },
           },
         };
         setCapturedContext(dummyContext);
+        
+        try {
+          const result = await runPrivacyScan(dummyContext);
+          setPrivacyResult(result);
+          console.log('[NAZAR] Privacy scan complete, regions:', result.regions);
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Privacy scan failed');
+        }
         setLoading(false);
-      }, 400);
+      }, 500);
       return;
     }
 
+    // REAL FLOW: Capture from browser
     const message: NazarMessage = {
       id: createMessageId(),
       type: 'CAPTURE_CONTEXT',
       timestamp: Date.now(),
     };
 
-    chrome.runtime.sendMessage(message, (response: MessageResponse<CapturedContextPayload>) => {
+    try {
+      chrome.runtime.sendMessage(message, async (response: MessageResponse<CapturedContextPayload>) => {
+        if (chrome.runtime.lastError) {
+          console.error('[NAZAR] Capture error:', chrome.runtime.lastError);
+          setError(chrome.runtime.lastError.message || 'Capture failed');
+          setLoading(false);
+          return;
+        }
+        
+        if (response && response.success && response.data) {
+          setCapturedContext(response.data);
+          setError(null);
+          
+          // Immediately run privacy scan
+          try {
+            const result = await runPrivacyScan(response.data);
+            setPrivacyResult(result);
+            console.log('[NAZAR] Privacy scan complete, regions:', result.regions);
+          } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Privacy scan failed');
+          }
+        } else {
+          setError(response?.error?.message || 'Context capture failed');
+        }
+        setLoading(false);
+      });
+    } catch (err: unknown) {
       setLoading(false);
-      if (chrome.runtime.lastError) {
-        setError(chrome.runtime.lastError.message || 'Capture failed');
-        return;
-      }
-      if (response && response.success && response.data) {
-        setCapturedContext(response.data);
-      } else {
-        setError(response?.error?.message || 'Context capture failed');
-      }
-    });
+      console.error('[NAZAR] Capture exception:', err);
+      setError(err instanceof Error ? err.message : 'Capture error');
+    }
   };
 
-  const handleRunPrivacyScan = async () => {
-    if (!capturedContext) return;
-    setScanning(true);
+  const handleApproveRedactions = (artifact: SanitizedArtifact) => {
+    setApprovedArtifact(artifact);
+    console.log('[NAZAR] Redactions approved, ready for agent:', artifact);
+  };
+
+  const handleReset = () => {
+    setCapturedContext(null);
+    setPrivacyResult(null);
+    setApprovedArtifact(null);
+    setUserPrompt('');
     setError(null);
-
-    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-      // Local fallback
-      try {
-        const res = await runPrivacyScan(capturedContext);
-        setPrivacyResult(res);
-        setActiveTabName('editor');
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Privacy scan failed');
-      } finally {
-        setScanning(false);
-      }
-      return;
-    }
-
-    const scanMsg: RunPrivacyScanMessage = {
-      id: createMessageId(),
-      type: 'RUN_PRIVACY_SCAN',
-      timestamp: Date.now(),
-      context: capturedContext,
-    };
-
-    chrome.runtime.sendMessage(scanMsg, (response: MessageResponse<PrivacyScanResult>) => {
-      setScanning(false);
-      if (chrome.runtime.lastError) {
-        setError(chrome.runtime.lastError.message || 'Privacy scan failed');
-        return;
-      }
-      if (response && response.success && response.data) {
-        setPrivacyResult(response.data);
-        setActiveTabName('editor');
-      } else {
-        setError(response?.error?.message || 'Privacy scan failed');
-      }
-    });
   };
 
   return (
-    <div className="container" style={{ maxWidth: (activeTabName === 'editor' || mainTab === 'image-filter') ? '680px' : '440px' }}>
+    <div className="container" style={{ maxWidth: privacyResult ? '800px' : '500px' }}>
       {/* Header */}
       <header className="header">
         <div className="logo-group">
@@ -255,305 +276,138 @@ export const App: React.FC = () => {
         <ImagePrivacyFilter />
       )}
 
-      {mainTab === 'browser-agent' && <React.Fragment>
-
-      {/* Error Banner */}
-      {error && (
-        <div className="error-banner">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <div>
-            <strong>Scan Error:</strong> {error}
-          </div>
-        </div>
-      )}
-
-      {/* Main Action Buttons */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <button
-          id="btn-capture-context"
-          className="btn-primary"
-          onClick={handleCapture}
-          disabled={loading || (status !== null && !status.activeTabAccessible)}
-        >
-          {loading ? <span>Capturing...</span> : <span>1. Capture Tab</span>}
-        </button>
-
-        {capturedContext && (
-          <button
-            id="btn-run-privacy-scan"
-            className="btn-primary"
-            style={{ background: 'linear-gradient(135deg, #059669, #0d9488)' }}
-            onClick={handleRunPrivacyScan}
-            disabled={scanning}
-          >
-            {scanning ? <span>Scanning PII/OCR...</span> : <span>2. Run Privacy Scan</span>}
-          </button>
-        )}
-
-        {capturedContext && (
-          <button
-            id="btn-open-editor"
-            className="btn-primary"
-            style={{
-              background: activeTabName === 'editor' ? 'linear-gradient(135deg, #0284c7, #2563eb)' : '#1e293b',
-              border: '1px solid #38bdf8',
-            }}
-            onClick={() => setActiveTabName('editor')}
-          >
-            <span>3. Review & Edit Redactions</span>
-          </button>
-        )}
-      </div>
-
-      {/* Approved Sanitized Artifact Banner */}
-      {approvedArtifact && (
-        <div
-          style={{
-            backgroundColor: 'rgba(5, 150, 105, 0.15)',
-            border: '1px solid #10b981',
-            borderRadius: '6px',
-            padding: '10px 12px',
-            fontSize: '11px',
-            color: '#a7f3d0',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <span style={{ fontWeight: 700, color: '#34d399', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              ✓ SANITIZED ARTIFACT APPROVED
-            </span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6ee7b7' }}>
-              {approvedArtifact.artifactId}
-            </span>
-          </div>
-          <div>
-            {approvedArtifact.redactionsCount} redaction(s) locked with checksum{' '}
-            <code style={{ fontFamily: 'var(--font-mono)', color: '#38bdf8' }}>
-              {approvedArtifact.securityChecksum.substring(0, 14)}...
-            </code>
-          </div>
-          <div style={{ fontSize: '10px', color: '#6ee7b7', marginTop: '4px' }}>
-            Ready for Phase 5 Secure Egress Gate. Raw user data remains 100% sealed on device.
-          </div>
-        </div>
-      )}
-
-      {/* Restricted Tab Notice */}
-      {status && !status.activeTabAccessible && (
-        <div style={{ fontSize: '11px', color: 'var(--accent-amber)', textAlign: 'center' }}>
-          Restricted internal page. Navigate to any standard website or test page.
-        </div>
-      )}
-
-      {/* Captured Context Details */}
-      {capturedContext && (
-        <>
-          {/* Stats Bar */}
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-number">{capturedContext.dom.stats.totalElements}</div>
-              <div className="stat-label">DOM Nodes</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-number">{capturedContext.dom.stats.interactiveCount}</div>
-              <div className="stat-label">Interactive</div>
-            </div>
-            <div
-              className="stat-card"
-              style={{
-                borderColor: privacyResult && privacyResult.stats.totalDetected > 0 ? 'rgba(244, 63, 94, 0.4)' : undefined,
-              }}
-            >
-              <div
-                className="stat-number"
-                style={{
-                  color: privacyResult && privacyResult.stats.totalDetected > 0 ? 'var(--accent-rose)' : undefined,
-                }}
-              >
-                {privacyResult ? privacyResult.stats.totalDetected : capturedContext.dom.stats.sensitiveCandidateCount}
+      {/* Browser Agent Feature */}
+      {mainTab === 'browser-agent' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+          {/* Error Banner */}
+          {error && (
+            <div className="error-banner">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <div>
+                <strong>Error:</strong> {error}
               </div>
-              <div className="stat-label">{privacyResult ? 'Detected PII' : 'Candidates'}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-number">
-                {privacyResult ? `${privacyResult.latency.totalMs}ms` : `${capturedContext.dom.stats.formsCount}`}
-              </div>
-              <div className="stat-label">{privacyResult ? 'Scan Latency' : 'Forms'}</div>
-            </div>
-          </div>
-
-          {/* Tab selector for View */}
-          <div
-            style={{
-              display: 'flex',
-              gap: '8px',
-              borderBottom: '1px solid var(--border-color)',
-              paddingBottom: '4px',
-            }}
-          >
-            <button
-              onClick={() => setActiveTabName('editor')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: activeTabName === 'editor' ? 'var(--accent-cyan)' : 'var(--text-muted)',
-                fontWeight: 600,
-                fontSize: '12px',
-                cursor: 'pointer',
-                paddingBottom: '2px',
-                borderBottom: activeTabName === 'editor' ? '2px solid var(--accent-cyan)' : 'none',
-              }}
-            >
-              Preview Editor {privacyResult ? `(${privacyResult.regions.length})` : ''}
-            </button>
-            <button
-              onClick={() => setActiveTabName('overview')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: activeTabName === 'overview' ? 'var(--accent-cyan)' : 'var(--text-muted)',
-                fontWeight: 600,
-                fontSize: '12px',
-                cursor: 'pointer',
-                paddingBottom: '2px',
-                borderBottom: activeTabName === 'overview' ? '2px solid var(--accent-cyan)' : 'none',
-              }}
-            >
-              Screenshot
-            </button>
-            <button
-              onClick={() => setActiveTabName('dom')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: activeTabName === 'dom' ? 'var(--accent-cyan)' : 'var(--text-muted)',
-                fontWeight: 600,
-                fontSize: '12px',
-                cursor: 'pointer',
-                paddingBottom: '2px',
-                borderBottom: activeTabName === 'dom' ? '2px solid var(--accent-cyan)' : 'none',
-              }}
-            >
-              DOM ({capturedContext.dom.elements.length})
-            </button>
-            {privacyResult && (
-              <button
-                onClick={() => setActiveTabName('privacy')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: activeTabName === 'privacy' ? 'var(--accent-rose)' : 'var(--text-muted)',
-                  fontWeight: 600,
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  paddingBottom: '2px',
-                  borderBottom: activeTabName === 'privacy' ? '2px solid var(--accent-rose)' : 'none',
-                }}
-              >
-                Scan List ({privacyResult.regions.length})
-              </button>
-            )}
-          </div>
-
-          {/* Tab 1: Interactive Preview Editor */}
-          {activeTabName === 'editor' && (
-            <div style={{ height: '380px', width: '100%' }}>
-              <PreviewEditor
-                originalImageUrl={capturedContext.screenshotDataUrl}
-                initialRedactions={createRedactionItems(privacyResult ? privacyResult.regions : [])}
-                onApprove={(artifact) => {
-                  setApprovedArtifact(artifact);
-                }}
-                onCancel={() => {
-                  setApprovedArtifact(null);
-                  setActiveTabName('overview');
-                }}
-              />
             </div>
           )}
 
-          {/* Tab 2: Overview Screenshot */}
-          {activeTabName === 'overview' && (
-            <div className="card">
-              <div className="card-title">
-                <span>
-                  Viewport ({capturedContext.dom.viewport.width}x{capturedContext.dom.viewport.height})
-                </span>
-                <span style={{ fontSize: '10px', color: 'var(--accent-teal)' }}>In-Memory Only</span>
+          {/* STEP 1: Prompt Input + Proceed */}
+          {!privacyResult && !approvedArtifact && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                  What would you like the AI to do?
+                </label>
+                <textarea
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  placeholder="e.g., 'Fill out this form automatically' or 'Extract information from this page'"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    background: 'var(--card-bg)',
+                    border: '1px solid var(--border-color)',
+                    color: '#f8fafc',
+                    fontFamily: 'system-ui',
+                    fontSize: '13px',
+                    minHeight: '80px',
+                    resize: 'vertical',
+                  }}
+                />
               </div>
-              <div className="preview-container">
-                <img
-                  src={capturedContext.screenshotDataUrl}
-                  alt="Captured Viewport"
-                  className="preview-img"
+              <button
+                onClick={handleProceed}
+                disabled={loading || !userPrompt.trim()}
+                style={{
+                  padding: '10px 16px',
+                  background: loading ? '#94a3b8' : 'linear-gradient(135deg, var(--accent-cyan), var(--accent-blue))',
+                  border: 'none',
+                  color: '#fff',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: loading || !userPrompt.trim() ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {loading ? 'Processing...' : '→ Proceed'}
+              </button>
+            </div>
+          )}
+
+          {/* STEP 2: Privacy Scan + Preview */}
+          {privacyResult && !approvedArtifact && capturedContext && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Image Info */}
+              <div style={{ background: 'var(--card-bg)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Image Size:</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                    {Math.round(capturedContext.dom.viewport.width)} × {Math.round(capturedContext.dom.viewport.height)} px
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Sensitive Elements Found:</span>
+                  <span style={{ color: privacyResult.regions.length > 0 ? '#f87171' : '#10b981', fontWeight: 600 }}>
+                    {privacyResult.regions.length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Preview Editor (Now at proper zoom) */}
+              <div
+                style={{
+                  height: '500px',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                <PreviewEditor
+                  originalImageUrl={capturedContext.screenshotDataUrl}
+                  initialRedactions={createRedactionItems(privacyResult.regions, { paddingPx: 12 })}
+                  domContext={{
+                    url: capturedContext.dom.url,
+                    title: capturedContext.dom.title,
+                    timestamp: capturedContext.dom.timestamp,
+                    elements: capturedContext.dom.elements,
+                    redactedCount: privacyResult.regions.length,
+                    appliedRedactions: createRedactionItems(privacyResult.regions, { paddingPx: 12 }),
+                  }}
+                  onApprove={handleApproveRedactions}
+                  onCancel={handleReset}
                 />
               </div>
             </div>
           )}
 
-          {/* Tab 3: DOM List */}
-          {activeTabName === 'dom' && (
-            <div className="card">
-              <div className="card-title">
-                <span>Discovered Interactive & Semantic Elements</span>
+          {/* STEP 3: Ready to Send to Agent */}
+          {approvedArtifact && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '12px', borderRadius: '6px', color: '#10b981', fontSize: '13px' }}>
+                ✓ Privacy approval locked. Ready to proceed with sanitized context.
               </div>
-              <div className="elements-list">
-                {capturedContext.dom.elements.map((el) => (
-                  <div key={el.id} className="element-item">
-                    <div>
-                      <span className="element-tag">&lt;{el.tagName}&gt;</span>{' '}
-                      <span className="element-selector" title={el.selector}>
-                        {el.selector}
-                      </span>
-                    </div>
-                    {el.isSensitiveCandidate && <span className="badge-sensitive">Candidate</span>}
-                  </div>
-                ))}
-              </div>
+              <button
+                onClick={handleReset}
+                style={{
+                  padding: '10px 16px',
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--border-color)',
+                  color: '#38bdf8',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                ← Start Over
+              </button>
             </div>
           )}
-
-          {/* Tab 4: Privacy Scan Fused Detections */}
-          {activeTabName === 'privacy' && privacyResult && (
-            <div className="card">
-              <div className="card-title">
-                <span>Fused Sensitive Regions ({privacyResult.regions.length})</span>
-                <span style={{ fontSize: '10px', color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>
-                  DOM: {privacyResult.latency.domMs}ms | OCR: {privacyResult.latency.ocrMs}ms | PII:{' '}
-                  {privacyResult.latency.piiMs}ms | Fusion: {privacyResult.latency.fusionMs}ms
-                </span>
-              </div>
-              <div className="elements-list">
-                {privacyResult.regions.map((region) => (
-                  <div key={region.id} className="element-item" style={{ borderColor: 'rgba(244, 63, 94, 0.3)' }}>
-                    <div>
-                      <span style={{ color: 'var(--accent-rose)', fontWeight: 600 }}>{region.label}</span>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                        {region.source.toUpperCase()} • Conf: {Math.round(region.confidence * 100)}% • Box: (
-                        {region.boundingBox.x}, {region.boundingBox.y}, {region.boundingBox.width}x
-                        {region.boundingBox.height})
-                      </div>
-                    </div>
-                    <span className="badge-sensitive" style={{ textTransform: 'capitalize' }}>
-                      {region.recommendedRedaction.replace('_', ' ')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       )}
-
-      </React.Fragment>}
-
-      {/* Footer */}
-      <footer className="footer-info">
-        NAZAR v0.1.0 • Phase 8 Model Manager & Offline Operation • Zero external network egress
-      </footer>
     </div>
   );
 };

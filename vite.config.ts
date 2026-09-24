@@ -39,7 +39,13 @@ export default defineConfig({
           }
           return 'assets/[name]-[hash].js';
         },
-        chunkFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: (chunkInfo) => {
+          // Force all non-popup chunks to be bundled inline
+          if (chunkInfo.name === 'messages' || chunkInfo.name === 'background' || chunkInfo.name === 'contentScript') {
+            return '[name].js';
+          }
+          return 'assets/[name]-[hash].js';
+        },
         assetFileNames: 'assets/[name]-[hash].[ext]',
       },
     },

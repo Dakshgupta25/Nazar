@@ -101,8 +101,11 @@ chrome.runtime.onMessage.addListener(
     _sender: chrome.runtime.MessageSender,
     sendResponse: (response: MessageResponse) => void
   ) => {
+    console.info('[NAZAR] Message received:', { type: (message as any)?.type, id: (message as any)?.id });
+    
     // Fail closed: reject invalid message schemas
     if (!isValidNazarMessage(message)) {
+      console.warn('[NAZAR] Invalid message schema received');
       sendResponse({
         success: false,
         requestId: 'unknown',
@@ -116,142 +119,168 @@ chrome.runtime.onMessage.addListener(
 
     const msg = message as NazarMessage;
 
-    // Handle asynchronous tasks
-    (async () => {
-      switch (msg.type) {
-        case 'GET_STATUS': {
-          const tab = await getActiveTab();
-          const isAccessible = tab ? isTabPermissible(tab) : false;
-          const status: ExtensionStatusPayload = {
-            ready: true,
-            version: '0.1.0',
-            activeTabAccessible: isAccessible,
-            tabId: tab?.id,
-            url: isAccessible && tab?.url ? tab.url : undefined,
-          };
-          sendResponse({
-            success: true,
-            requestId: msg.id,
-            data: status,
-          });
-          break;
-        }
-
-        case 'CAPTURE_VISIBLE_TAB': {
-          try {
-            const dataUrl = await captureVisibleTab();
-            sendResponse({
-              success: true,
-              requestId: msg.id,
-              data: { screenshotDataUrl: dataUrl },
-            });
-          } catch (err: unknown) {
-            sendResponse({
-              success: false,
-              requestId: msg.id,
-              error: {
-                code: 'CAPTURE_FAILED',
-                message: err instanceof Error ? err.message : 'Screenshot capture failed',
-              },
-            });
-          }
-          break;
-        }
-
-        case 'CAPTURE_CONTEXT': {
-          try {
-            const tab = await getActiveTab();
-            if (!tab || !tab.id) {
-              throw new Error('No active browser tab found.');
-            }
-            if (!isTabPermissible(tab)) {
-              throw new Error(
-                `Tab with URL "${tab.url || 'unknown'}" is restricted and cannot be captured for privacy & security reasons.`
-              );
-            }
-
-            // Parallel capture of screenshot & DOM
-            const [screenshotDataUrl, domContext] = await Promise.all([
-              captureVisibleTab(tab.windowId),
-              requestDomExtraction(tab.id),
-            ]);
-
-            const payload: CapturedContextPayload = {
-              tabId: tab.id,
-              url: tab.url || '',
-              title: tab.title || '',
-              timestamp: Date.now(),
-              screenshotDataUrl,
-              dom: domContext,
-            };
-
-            sendResponse({
-              success: true,
-              requestId: msg.id,
-              data: payload,
-            });
-          } catch (err: unknown) {
-            console.error('[NAZAR] Context capture failed:', err instanceof Error ? err.message : String(err));
-            sendResponse({
-              success: false,
-              requestId: msg.id,
-              error: {
-                code: 'CONTEXT_CAPTURE_FAILED',
-                message: err instanceof Error ? err.message : 'Context capture failed',
-              },
-            });
-          }
-          break;
-        }
-
-        case 'RUN_PRIVACY_SCAN': {
-          try {
-            const scanMsg = msg as RunPrivacyScanMessage;
-            if (!scanMsg.context) {
-              throw new Error('No captured context provided for privacy scan.');
-            }
-            const scanResult: PrivacyScanResult = await runPrivacyScan(scanMsg.context);
-            sendResponse({
-              success: true,
-              requestId: msg.id,
-              data: scanResult,
-            });
-          } catch (err: unknown) {
-            console.error('[NAZAR] Privacy scan failed:', err instanceof Error ? err.message : String(err));
-            sendResponse({
-              success: false,
-              requestId: msg.id,
-              error: {
-                code: 'PRIVACY_SCAN_FAILED',
-                message: err instanceof Error ? err.message : 'Privacy scan failed',
-              },
-            });
-          }
-          break;
-        }
-
-        default: {
-          sendResponse({
-            success: false,
-            requestId: msg.id,
-            error: {
-              code: 'UNHANDLED_BACKGROUND_MESSAGE',
-              message: `Unknown or unhandled message type "${msg.type}".`,
-            },
-          });
-          break;
-        }
+    // Wrap sendResponse to ensure it's only called once and logs errors
+    let responseSent = false;
+    const wrappedSendResponse = (response: MessageResponse) => {
+      if (responseSent) {
+        console.warn('[NAZAR] Attempted to send response twice for message:', msg.id);
+        return;
       }
-    })().catch((err: unknown) => {
-      sendResponse({
-        success: false,
-        requestId: msg.id,
-        error: {
-          code: 'UNEXPECTED_WORKER_ERROR',
-          message: err instanceof Error ? err.message : 'Unexpected background error',
-        },
-      });
-    });
+      responseSent = true;
+      console.info('[NAZAR] Sending response for message:', msg.id);
+      try {
+        sendResponse(response);
+      } catch (err) {
+        console.error('[NAZAR] Failed to send response:', err);
+      }
+    };
+
+    // Handle asynchronous tasks with explicit error handling
+    (async () => {
+      try {
+        console.info('[NAZAR] Processing message type:', msg.type);
+        
+        switch (msg.type) {
+          case 'GET_STATUS': {
+            console.info('[NAZAR] Handling GET_STATUS');
+            const tab = await getActiveTab();
+            const isAccessible = tab ? isTabPermissible(tab) : false;
+            const status: ExtensionStatusPayload = {
+              ready: true,
+              version: '0.1.0',
+              activeTabAccessible: isAccessible,
+              tabId: tab?.id,
+              url: isAccessible && tab?.url ? tab.url : undefined,
+            };
+            wrappedSendResponse({
+              success: true,
+              requestId: msg.id,
+              data: status,
+            });
+            break;
+          }
+
+          case 'CAPTURE_VISIBLE_TAB': {
+            console.info('[NAZAR] Handling CAPTURE_VISIBLE_TAB');
+            try {
+              const dataUrl = await captureVisibleTab();
+              wrappedSendResponse({
+                success: true,
+                requestId: msg.id,
+                data: { screenshotDataUrl: dataUrl },
+              });
+            } catch (err: unknown) {
+              wrappedSendResponse({
+                success: false,
+                requestId: msg.id,
+                error: {
+                  code: 'CAPTURE_FAILED',
+                  message: err instanceof Error ? err.message : 'Screenshot capture failed',
+                },
+              });
+            }
+            break;
+          }
+
+          case 'CAPTURE_CONTEXT': {
+            console.info('[NAZAR] Handling CAPTURE_CONTEXT');
+            try {
+              const tab = await getActiveTab();
+              if (!tab || !tab.id) {
+                throw new Error('No active browser tab found.');
+              }
+              if (!isTabPermissible(tab)) {
+                throw new Error(
+                  `Tab with URL "${tab.url || 'unknown'}" is restricted and cannot be captured for privacy & security reasons.`
+                );
+              }
+
+              // Parallel capture of screenshot & DOM
+              const [screenshotDataUrl, domContext] = await Promise.all([
+                captureVisibleTab(tab.windowId),
+                requestDomExtraction(tab.id),
+              ]);
+
+              const payload: CapturedContextPayload = {
+                tabId: tab.id,
+                url: tab.url || '',
+                title: tab.title || '',
+                timestamp: Date.now(),
+                screenshotDataUrl,
+                dom: domContext,
+              };
+
+              wrappedSendResponse({
+                success: true,
+                requestId: msg.id,
+                data: payload,
+              });
+            } catch (err: unknown) {
+              console.error('[NAZAR] Context capture failed:', err instanceof Error ? err.message : String(err));
+              wrappedSendResponse({
+                success: false,
+                requestId: msg.id,
+                error: {
+                  code: 'CONTEXT_CAPTURE_FAILED',
+                  message: err instanceof Error ? err.message : 'Context capture failed',
+                },
+              });
+            }
+            break;
+          }
+
+          case 'RUN_PRIVACY_SCAN': {
+            console.info('[NAZAR] Handling RUN_PRIVACY_SCAN');
+            try {
+              const scanMsg = msg as RunPrivacyScanMessage;
+              if (!scanMsg.context) {
+                throw new Error('No captured context provided for privacy scan.');
+              }
+              const scanResult: PrivacyScanResult = await runPrivacyScan(scanMsg.context);
+              wrappedSendResponse({
+                success: true,
+                requestId: msg.id,
+                data: scanResult,
+              });
+            } catch (err: unknown) {
+              console.error('[NAZAR] Privacy scan failed:', err instanceof Error ? err.message : String(err));
+              wrappedSendResponse({
+                success: false,
+                requestId: msg.id,
+                error: {
+                  code: 'PRIVACY_SCAN_FAILED',
+                  message: err instanceof Error ? err.message : 'Privacy scan failed',
+                },
+              });
+            }
+            break;
+          }
+
+          default: {
+            console.warn('[NAZAR] Unknown message type:', msg.type);
+            wrappedSendResponse({
+              success: false,
+              requestId: msg.id,
+              error: {
+                code: 'UNHANDLED_BACKGROUND_MESSAGE',
+                message: `Unknown or unhandled message type "${msg.type}".`,
+              },
+            });
+            break;
+          }
+        }
+      } catch (err: unknown) {
+        console.error('[NAZAR] Unexpected error in message handler:', err);
+        wrappedSendResponse({
+          success: false,
+          requestId: msg.id,
+          error: {
+            code: 'UNEXPECTED_WORKER_ERROR',
+            message: err instanceof Error ? err.message : 'Unexpected background error',
+          },
+        });
+      }
+    })();
 
     return true; // Indicates asynchronous response
   }

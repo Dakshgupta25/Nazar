@@ -35,6 +35,7 @@ export function generateLocalChecksum(dataString: string): string {
 
 /**
  * Initializes the preview editor state with initial detected redactions.
+ * Sets initial zoom to fit image in container.
  */
 export function createInitialPreviewState(initialItems: RedactionItem[] = []): PreviewState {
   const cloned = JSON.parse(JSON.stringify(initialItems)) as RedactionItem[];
@@ -44,7 +45,7 @@ export function createInitialPreviewState(initialItems: RedactionItem[] = []): P
     historyIndex: 0,
     selectedItemId: cloned.length > 0 ? cloned[0].id : null,
     comparisonMode: 'sanitized',
-    zoom: 1.0,
+    zoom: 0.5, // Start at 50% zoom to fit image better in small container
     pan: { x: 0, y: 0 },
     splitPosition: 50,
     workflowState: 'editing',

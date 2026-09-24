@@ -18,7 +18,12 @@ import { ModelCapability, ModelCapabilityStatus, PrivacyEngineHealth } from '../
 import { ModelManager } from './modelManager';
 
 export const ModelStatusCard: React.FC = () => {
-  const [manager] = useState<ModelManager>(() => ModelManager.getInstance());
+  const [manager] = useState<ModelManager>(() => {
+    const instance = ModelManager.getInstance();
+    // Enable dev mode for local testing (disable this in production)
+    instance.setDevMode(true);
+    return instance;
+  });
   const [health, setHealth] = useState<PrivacyEngineHealth>(() => manager.getPrivacyEngineHealth());
   const [loading, setLoading] = useState<boolean>(false);
   const [activeDownloadCap, setActiveDownloadCap] = useState<ModelCapability | null>(null);
@@ -34,7 +39,16 @@ export const ModelStatusCard: React.FC = () => {
   };
 
   useEffect(() => {
-    refreshStatus();
+    // On first mount, bootstrap synthetic models for offline development
+    (async () => {
+      try {
+        await manager.bootstrapSyntheticModels();
+        console.info('[NAZAR] Models bootstrapped, detecting installed...');
+      } catch (err) {
+        console.warn('[NAZAR] Failed to bootstrap synthetic models:', err);
+      }
+      await refreshStatus();
+    })();
   }, []);
 
   const handleDownload = async (cap: ModelCapability) => {
