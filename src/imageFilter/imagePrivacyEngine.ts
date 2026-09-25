@@ -13,6 +13,7 @@ import { ImageFilterOptions, LocalImageScanResult } from '../types/imageFilter';
 import { performLocalOcr } from '../privacy/ocrDetector';
 import { detectFacesLocally } from '../privacy/faceDetector';
 import { scanTextForPii } from '../privacy/piiDetector';
+import { detectVisualSensitiveFields } from '../privacy/visualFieldDetector';
 import { fuseDetections, formatRedactionLabel } from '../privacy/fusionEngine';
 import { createRedactionItems } from '../redaction/redactionEngine';
 import { PixelBuffer, redactPixelBuffer } from '../redaction/pixelRedactor';
@@ -135,9 +136,21 @@ export async function scanLocalImage(
       }
     }
   }
+  // 3. Visual Text Field & Form Input Detection (Without DOM)
+  try {
+    const visualFieldRegions = detectVisualSensitiveFields(pixelBuffer, ocrWords, width, height);
+    for (const vf of visualFieldRegions) {
+      rawRegions.push({
+        ...vf,
+        id: `img_field_${++regionCounter}`,
+      });
+    }
+  } catch {
+    // Visual field detection fail-safe
+  }
   const piiMs = Math.round(performance.now() - piiStart);
 
-  // 3. Local Face Detection
+  // 4. Local Face Detection (Preserved untouched)
   const faceStart = performance.now();
   const faceMatches = await detectFacesLocally(dataUrl);
   for (const face of faceMatches) {

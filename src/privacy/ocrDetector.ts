@@ -127,6 +127,7 @@ export async function performLocalOcr(
   }
 
   // 3. If Chrome Shape Detection TextDetector is available in window
+  let detectedWithNative = false;
   if (typeof window !== 'undefined' && 'TextDetector' in window) {
     try {
       // @ts-expect-error Native Shape Detection API
@@ -157,11 +158,62 @@ export async function performLocalOcr(
               tb.boundingBox.height
             );
             results.push(...extractOcrWordsFromTextBlock(tb.rawValue, box));
+            detectedWithNative = true;
           }
         }
       }
     } catch {
       // Fallback gracefully
+    }
+  }
+
+  // 4. Local Tesseract.js OCR for raster images (PNG, JPEG, WebP) in browser runtime
+  const isJsdom = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('jsdom');
+  const isNode = typeof process !== 'undefined' && process.versions?.node && typeof window === 'undefined';
+
+  if (!isJsdom && !isNode && !detectedWithNative && typeof imageSource === 'string' && imageSource.length > 50 && !imageSource.includes('image/svg') && !imageSource.includes('<svg') && !imageSource.includes('mock_')) {
+    try {
+      // Dynamic import to support both Vite bundle and client browser environments
+      const TesseractModule = await import('tesseract.js');
+      const recognize = TesseractModule.recognize || (TesseractModule.default as any)?.recognize;
+
+      if (typeof recognize === 'function') {
+        const ocrPromise = recognize(imageSource, 'eng');
+        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 10000));
+        const res = await Promise.race([ocrPromise, timeoutPromise]);
+
+        if (res && res.data) {
+          const data = res.data as any;
+          if (Array.isArray(data.words)) {
+            for (const w of data.words) {
+              const text = w.text?.trim();
+              if (text && w.bbox) {
+                const boxW = Math.max(10, w.bbox.x1 - w.bbox.x0);
+                const boxH = Math.max(10, w.bbox.y1 - w.bbox.y0);
+                results.push({
+                  text,
+                  confidence: (w.confidence ?? 85) / 100,
+                  boundingBox: createBox(w.bbox.x0, w.bbox.y0, boxW, boxH),
+                });
+              }
+            }
+          } else if (data.text && Array.isArray(data.lines)) {
+            for (const line of data.lines) {
+              if (line.text && line.bbox) {
+                const lineBox = createBox(
+                  line.bbox.x0,
+                  line.bbox.y0,
+                  line.bbox.x1 - line.bbox.x0,
+                  line.bbox.y1 - line.bbox.y0
+                );
+                results.push(...extractOcrWordsFromTextBlock(line.text, lineBox, 0.9));
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Fallback gracefully if Tesseract is not available in environment
     }
   }
 

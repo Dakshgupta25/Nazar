@@ -102,6 +102,8 @@ const GITHUB_TOKEN_REGEX = /\b(?:ghp_[0-9a-zA-Z]{30,42}|github_pat_[0-9a-zA-Z_]{
 const SLACK_TOKEN_REGEX = /\bxox[baprs]-[0-9a-zA-Z-]{24,}\b/g;
 const JWT_TOKEN_REGEX = /\beyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g;
 const GENERIC_HEX_KEY_REGEX = /\b(?:api[_-]?key|secret|token|auth)["'\s:=]+([0-9a-fA-F]{32,64})\b/gi;
+const GENERIC_API_TOKEN_REGEX = /\b(?:naz|sk|pk|api|key|token|sec|app|auth)_[0-9a-zA-Z_\-]{12,}\b/gi;
+const PASSWORD_MASK_REGEX = /\b[•●\*]{3,}\b/g;
 
 // Potential Credit Card candidates (13 to 19 digits with separators)
 const CARD_CANDIDATE_REGEX = /\b(?:\d{4}[-\s]?){3}\d{1,4}\b|\b\d{13,19}\b/g;
@@ -173,6 +175,8 @@ export function scanTextForPii(text: string): PiiTextMatch[] {
   matchRegex(SLACK_TOKEN_REGEX, 'access_token', 0.99);
   matchRegex(JWT_TOKEN_REGEX, 'access_token', 0.95);
   matchRegex(GENERIC_HEX_KEY_REGEX, 'secret_key', 0.92);
+  matchRegex(GENERIC_API_TOKEN_REGEX, 'api_key', 0.96);
+  matchRegex(PASSWORD_MASK_REGEX, 'password', 0.96);
 
   // 7. Postal Codes
   matchRegex(PIN_CODE_REGEX, 'postal_code', 0.88);
