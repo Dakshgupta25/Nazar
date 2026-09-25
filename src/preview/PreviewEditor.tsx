@@ -38,8 +38,48 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
 }) => {
   const [state, setState] = useState(() => createInitialPreviewState(initialRedactions));
   const containerRef = useRef<HTMLDivElement>(null);
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const hasAutoFittedRef = useRef(false);
 
-  // Interaction dragging states
+  // Auto-fit image to container viewport
+  const handleAutoFit = useCallback((imgW?: number, imgH?: number) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const cW = rect.width > 40 ? rect.width : 500;
+    const cH = rect.height > 40 ? rect.height : 320;
+    const iW = imgW || imageDimensions.width || 600;
+    const iH = imgH || imageDimensions.height || 400;
+
+    if (iW <= 0 || iH <= 0) return;
+
+    // Calculate scale factor so full image fits in view with slight padding
+    const scaleX = (cW - 16) / iW;
+    const scaleY = (cH - 16) / iH;
+    const fitZoom = Math.max(0.15, Math.min(scaleX, scaleY, 1.0));
+    const roundedZoom = parseFloat(fitZoom.toFixed(2));
+
+    const panX = Math.max(0, Math.round((cW - iW * roundedZoom) / 2));
+    const panY = Math.max(0, Math.round((cH - iH * roundedZoom) / 2));
+
+    setState((prev) => ({
+      ...prev,
+      zoom: roundedZoom,
+      pan: { x: panX, y: panY },
+    }));
+  }, [imageDimensions]);
+
+  // Handle image load to capture actual dimensions and auto-fit
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    const naturalW = img.naturalWidth || 600;
+    const naturalH = img.naturalHeight || 400;
+    setImageDimensions({ width: naturalW, height: naturalH });
+
+    if (!hasAutoFittedRef.current) {
+      hasAutoFittedRef.current = true;
+      handleAutoFit(naturalW, naturalH);
+    }
+  };
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
@@ -404,7 +444,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <button
             id="btn-zoom-out"
-            onClick={() => setState((prev) => setZoom(prev, prev.zoom - 0.25))}
+            onClick={() => setState((prev) => setZoom(prev, prev.zoom - 0.2))}
             style={{
               background: '#1e293b',
               border: '1px solid #334155',
@@ -414,6 +454,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
               fontSize: '11px',
               cursor: 'pointer',
             }}
+            title="Zoom Out"
           >
             -
           </button>
@@ -422,7 +463,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
           </span>
           <button
             id="btn-zoom-in"
-            onClick={() => setState((prev) => setZoom(prev, prev.zoom + 0.25))}
+            onClick={() => setState((prev) => setZoom(prev, prev.zoom + 0.2))}
             style={{
               background: '#1e293b',
               border: '1px solid #334155',
@@ -432,8 +473,26 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
               fontSize: '11px',
               cursor: 'pointer',
             }}
+            title="Zoom In"
           >
             +
+          </button>
+          <button
+            id="btn-zoom-fit"
+            onClick={() => handleAutoFit()}
+            style={{
+              background: 'rgba(56, 189, 248, 0.15)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              color: '#38bdf8',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+            title="Auto-Fit to Window"
+          >
+            ⛶ Fit
           </button>
           <button
             id="btn-zoom-reset"
@@ -447,8 +506,9 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
               fontSize: '10px',
               cursor: 'pointer',
             }}
+            title="Reset to 100%"
           >
-            Reset
+            100%
           </button>
         </div>
 
@@ -547,6 +607,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
             <img
               src={originalImageUrl}
               alt="Viewport"
+              onLoad={handleImageLoad}
               draggable={false}
               style={{
                 display: 'block',

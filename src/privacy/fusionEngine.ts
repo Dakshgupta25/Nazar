@@ -38,26 +38,25 @@ export function calculateIoU(boxA: BoundingBox, boxB: BoundingBox): number {
 export function doBoxesOverlapSignificantly(
   boxA: BoundingBox,
   boxB: BoundingBox,
-  iouThreshold = 0.2
+  iouThreshold = 0.4
 ): boolean {
-  if (calculateIoU(boxA, boxB) > iouThreshold) {
+  if (calculateIoU(boxA, boxB) >= iouThreshold) {
     return true;
   }
 
-  // Check containment (e.g. word inside an input box)
-  const isAInsideB =
-    boxA.x >= boxB.x - 5 &&
-    boxA.y >= boxB.y - 5 &&
-    boxA.x + boxA.width <= boxB.x + boxB.width + 5 &&
-    boxA.y + boxA.height <= boxB.y + boxB.height + 5;
+  // Check containment (e.g. OCR word inside an input box)
+  const x1 = Math.max(boxA.x, boxB.x);
+  const y1 = Math.max(boxA.y, boxB.y);
+  const x2 = Math.min(boxA.x + boxA.width, boxB.x + boxB.width);
+  const y2 = Math.min(boxA.y + boxA.height, boxB.y + boxB.height);
+  const interW = Math.max(0, x2 - x1);
+  const interH = Math.max(0, y2 - y1);
+  const interArea = interW * interH;
+  const areaA = boxA.width * boxA.height;
+  const areaB = boxB.width * boxB.height;
 
-  const isBInsideA =
-    boxB.x >= boxA.x - 5 &&
-    boxB.y >= boxA.y - 5 &&
-    boxB.x + boxB.width <= boxA.x + boxA.width + 5 &&
-    boxB.y + boxA.height <= boxA.y + boxA.height + 5;
-
-  return isAInsideB || isBInsideA;
+  // Containment >= 75%
+  return (areaA > 0 && interArea / areaA >= 0.75) || (areaB > 0 && interArea / areaB >= 0.75);
 }
 
 /**

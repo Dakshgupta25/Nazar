@@ -89,17 +89,26 @@ export async function scanLocalImage(
 
   // Multi-word phrase scanning (e.g. addresses, full names, multi-part phone numbers)
   if (ocrWords.length > 1) {
-    const fullPhrase = ocrWords.map((w) => w.text).join(' ');
-    const phraseMatches = scanTextForPii(fullPhrase);
-    
+    let cumulativeText = '';
+    const wordOffsets: { start: number; end: number; word: (typeof ocrWords)[0] }[] = [];
+    for (const w of ocrWords) {
+      const start = cumulativeText.length;
+      cumulativeText += w.text + ' ';
+      wordOffsets.push({ start, end: start + w.text.length, word: w });
+    }
+
+    const phraseMatches = scanTextForPii(cumulativeText);
     for (const match of phraseMatches) {
-      // Find bounding span across words
-      const matchingWords = ocrWords.slice(0, 5); // approximate span
-      if (matchingWords.length > 0) {
-        const minX = Math.min(...matchingWords.map((w) => w.boundingBox.x));
-        const minY = Math.min(...matchingWords.map((w) => w.boundingBox.y));
-        const maxX = Math.max(...matchingWords.map((w) => w.boundingBox.x + w.boundingBox.width));
-        const maxY = Math.max(...matchingWords.map((w) => w.boundingBox.y + w.boundingBox.height));
+      // Find which words overlap with [match.startIndex, match.endIndex]
+      const overlappingWords = wordOffsets.filter(
+        (wo) => wo.start < match.endIndex && wo.end > match.startIndex
+      );
+
+      if (overlappingWords.length > 0) {
+        const minX = Math.min(...overlappingWords.map((wo) => wo.word.boundingBox.x));
+        const minY = Math.min(...overlappingWords.map((wo) => wo.word.boundingBox.y));
+        const maxX = Math.max(...overlappingWords.map((wo) => wo.word.boundingBox.x + wo.word.boundingBox.width));
+        const maxY = Math.max(...overlappingWords.map((wo) => wo.word.boundingBox.y + wo.word.boundingBox.height));
 
         rawRegions.push({
           id: `img_phrase_${++regionCounter}`,
@@ -108,15 +117,18 @@ export async function scanLocalImage(
           boundingBox: {
             x: minX,
             y: minY,
-            width: maxX - minX,
-            height: maxY - minY,
+            width: Math.max(20, maxX - minX),
+            height: Math.max(14, maxY - minY),
             top: minY,
             left: minX,
             bottom: maxY,
             right: maxX,
           },
           source: 'ocr',
-          recommendedRedaction: 'semantic_label',
+          recommendedRedaction:
+            match.category === 'secret_key' || match.category === 'password' || match.category === 'api_key'
+              ? 'solid_rectangle'
+              : 'semantic_label',
           label: formatRedactionLabel(match.category),
           sanitizedHint: `Detected ${match.category} phrase`,
         });

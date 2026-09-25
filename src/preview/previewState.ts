@@ -45,7 +45,7 @@ export function createInitialPreviewState(initialItems: RedactionItem[] = []): P
     historyIndex: 0,
     selectedItemId: cloned.length > 0 ? cloned[0].id : null,
     comparisonMode: 'sanitized',
-    zoom: 0.5, // Start at 50% zoom to fit image better in small container
+    zoom: 1.0,
     pan: { x: 0, y: 0 },
     splitPosition: 50,
     workflowState: 'editing',

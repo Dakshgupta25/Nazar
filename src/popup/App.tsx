@@ -319,20 +319,22 @@ export const App: React.FC = () => {
                 />
               </div>
               <button
+                id="btn-proceed-agent"
+                className="btn-proceed"
                 onClick={handleProceed}
                 disabled={loading || !userPrompt.trim()}
-                style={{
-                  padding: '10px 16px',
-                  background: loading ? '#94a3b8' : 'linear-gradient(135deg, var(--accent-cyan), var(--accent-blue))',
-                  border: 'none',
-                  color: '#fff',
-                  borderRadius: '6px',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  cursor: loading || !userPrompt.trim() ? 'not-allowed' : 'pointer',
-                }}
               >
-                {loading ? 'Processing...' : '→ Proceed'}
+                {loading ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⚙️</span>
+                    <span>Processing Privacy Firewall...</span>
+                  </span>
+                ) : (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>🛡️ Run Local Privacy Firewall & Preview</span>
+                    <span style={{ fontSize: '14px' }}>→</span>
+                  </span>
+                )}
               </button>
             </div>
           )}
@@ -343,20 +345,21 @@ export const App: React.FC = () => {
               {/* Image Info */}
               <div style={{ background: 'var(--card-bg)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Image Size:</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Captured Viewport:</span>
                   <span style={{ color: '#38bdf8', fontWeight: 600 }}>
                     {Math.round(capturedContext.dom.viewport.width)} × {Math.round(capturedContext.dom.viewport.height)} px
+                    {capturedContext.dom.viewport.devicePixelRatio > 1 && ` (${capturedContext.dom.viewport.devicePixelRatio}x DPR)`}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Sensitive Elements Found:</span>
                   <span style={{ color: privacyResult.regions.length > 0 ? '#f87171' : '#10b981', fontWeight: 600 }}>
-                    {privacyResult.regions.length}
+                    {privacyResult.regions.length} items
                   </span>
                 </div>
               </div>
 
-              {/* Preview Editor (Now at proper zoom) */}
+              {/* Preview Editor (With full auto-fit viewport) */}
               <div
                 style={{
                   height: '500px',
@@ -367,14 +370,14 @@ export const App: React.FC = () => {
               >
                 <PreviewEditor
                   originalImageUrl={capturedContext.screenshotDataUrl}
-                  initialRedactions={createRedactionItems(privacyResult.regions, { paddingPx: 12 })}
+                  initialRedactions={createRedactionItems(privacyResult.regions, { paddingPx: 4 })}
                   domContext={{
                     url: capturedContext.dom.url,
                     title: capturedContext.dom.title,
                     timestamp: capturedContext.dom.timestamp,
                     elements: capturedContext.dom.elements,
                     redactedCount: privacyResult.regions.length,
-                    appliedRedactions: createRedactionItems(privacyResult.regions, { paddingPx: 12 }),
+                    appliedRedactions: createRedactionItems(privacyResult.regions, { paddingPx: 4 }),
                   }}
                   onApprove={handleApproveRedactions}
                   onCancel={handleReset}

@@ -37,7 +37,7 @@ export class ModelManager {
   private statusMap: Map<ModelCapability, ModelCapabilityStatus> = new Map();
   private activeDownloads: Map<string, AbortController> = new Map();
   private mockPayloads: Map<string, ArrayBuffer> = new Map();
-  private devMode: boolean = true; // Enable development mode by default (disable in production)
+  private devMode: boolean = false;
 
   private constructor() {
     this.initializeDefaultStatuses();

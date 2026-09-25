@@ -98,10 +98,22 @@ export function resolveRedactionOverlaps(items: RedactionItem[]): RedactionItem[
 
       const candidate = items[j];
       const iou = calculateIoU(current.boundingBox, candidate.boundingBox);
-      const intersects = doBoxesIntersect(current.boundingBox, candidate.boundingBox, 0);
 
-      // Merge if significant overlap or direct intersection with containment
-      if (iou > 0.1 || intersects) {
+      // Check for strong containment (one box is almost entirely inside the other)
+      const x1 = Math.max(current.boundingBox.x, candidate.boundingBox.x);
+      const y1 = Math.max(current.boundingBox.y, candidate.boundingBox.y);
+      const x2 = Math.min(current.boundingBox.x + current.boundingBox.width, candidate.boundingBox.x + candidate.boundingBox.width);
+      const y2 = Math.min(current.boundingBox.y + current.boundingBox.height, candidate.boundingBox.y + candidate.boundingBox.height);
+      const interW = Math.max(0, x2 - x1);
+      const interH = Math.max(0, y2 - y1);
+      const interArea = interW * interH;
+      const areaA = current.boundingBox.width * current.boundingBox.height;
+      const areaB = candidate.boundingBox.width * candidate.boundingBox.height;
+      const containment = Math.max(areaA > 0 ? interArea / areaA : 0, areaB > 0 ? interArea / areaB : 0);
+
+      // Only merge if there is true substantial overlap (IoU >= 0.25 or containment >= 0.6)
+      // DO NOT merge distinct adjacent fields that merely touch on the borders
+      if (iou >= 0.25 || containment >= 0.6) {
         processed.add(j);
 
         // Union bounding boxes
