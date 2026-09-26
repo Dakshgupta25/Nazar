@@ -1,12 +1,14 @@
 /**
- * NAZAR Editable Preview Editor Component (Phase 4):
+ * NAZAR Editable Preview Editor Component
+ *
  * Interactive local canvas and UI allowing the user to review, modify,
  * add, remove, resize, zoom, pan, and compare redactions before approval.
  *
- * Guarantees:
+ * UI/UX Redesign:
+ * - Clear visual hierarchy: Prominent Approve action, subtle utility icon controls.
+ * - Auto-fit viewport fills canvas container smoothly without excessive margins.
+ * - Streamlined per-redaction item cards without technical coordinate clutter.
  * - 100% local rendering. Never transmits raw content.
- * - Approval produces an explicit immutable SanitizedArtifact.
- * - Cancellation destroys temporary sanitized state.
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -28,6 +30,15 @@ import {
   approveWorkflow,
   cancelWorkflow,
 } from './previewState';
+import {
+  UndoIcon,
+  RedoIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
+  FitIcon,
+  TrashIcon,
+  CheckIcon,
+} from '../popup/NazarIcons';
 
 export const PreviewEditor: React.FC<PreviewEditorProps> = ({
   originalImageUrl,
@@ -45,17 +56,17 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
   const handleAutoFit = useCallback((imgW?: number, imgH?: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const cW = rect.width > 40 ? rect.width : 500;
-    const cH = rect.height > 40 ? rect.height : 320;
+    const cW = rect.width > 40 ? rect.width : 540;
+    const cH = rect.height > 40 ? rect.height : 360;
     const iW = imgW || imageDimensions.width || 600;
     const iH = imgH || imageDimensions.height || 400;
 
     if (iW <= 0 || iH <= 0) return;
 
     // Calculate scale factor so full image fits in view with slight padding
-    const scaleX = (cW - 16) / iW;
-    const scaleY = (cH - 16) / iH;
-    const fitZoom = Math.max(0.15, Math.min(scaleX, scaleY, 1.0));
+    const scaleX = (cW - 12) / iW;
+    const scaleY = (cH - 12) / iH;
+    const fitZoom = Math.max(0.2, Math.min(scaleX, scaleY, 1.2));
     const roundedZoom = parseFloat(fitZoom.toFixed(2));
 
     const panX = Math.max(0, Math.round((cW - iW * roundedZoom) / 2));
@@ -80,6 +91,19 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
       handleAutoFit(naturalW, naturalH);
     }
   };
+
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver(() => {
+      if (imageDimensions.width > 0) {
+        handleAutoFit(imageDimensions.width, imageDimensions.height);
+      }
+    });
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    return () => resizeObserver.disconnect();
+  }, [imageDimensions, handleAutoFit]);
+
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
@@ -109,8 +133,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
         e.preventDefault();
         setState((prev) => redo(prev));
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedItemId) {
-        // Only if not focused on an input element
-        if ((e.target as HTMLElement).tagName !== 'INPUT') {
+        if ((e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'SELECT') {
           e.preventDefault();
           setState((prev) => removeRedaction(prev, prev.selectedItemId!));
         }
@@ -133,17 +156,15 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     [state.pan, state.zoom]
   );
 
-  // Handle Canvas Mouse Down (Create new box, or start panning if space/middle-click)
+  // Handle Canvas Mouse Down
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || e.altKey) {
-      // Middle click or Alt+drag -> Pan
       setIsPanning(true);
       setPanStart({ x: e.clientX - state.pan.x, y: e.clientY - state.pan.y });
       return;
     }
 
     if (e.target === containerRef.current || (e.target as HTMLElement).tagName === 'IMG') {
-      // Clicked on blank area -> deselect & start drawing new redaction box
       const coords = getCanvasCoords(e.clientX, e.clientY);
       setState((prev) => selectItem(prev, null));
       setIsCreatingBox(true);
@@ -237,7 +258,6 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     if (isResizingBox) setIsResizingBox(false);
   };
 
-  // Start dragging an existing box to move it
   const handleBoxMouseDown = (e: React.MouseEvent, item: RedactionItem) => {
     e.stopPropagation();
     setState((prev) => selectItem(prev, item.id));
@@ -250,7 +270,6 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     });
   };
 
-  // Start dragging corner handle to resize
   const handleResizeMouseDown = (e: React.MouseEvent, item: RedactionItem) => {
     e.stopPropagation();
     setIsResizingBox(true);
@@ -262,7 +281,6 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     });
   };
 
-  // Handlers for Toolbar Actions
   const handleApprove = () => {
     const nextState = approveWorkflow(state, {
       contextUrl: domContext?.url,
@@ -283,13 +301,13 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     }
   };
 
-  // Render Redaction Box with chosen visual style
+  // Render Redaction Box with clean visual style
   const renderRedactionBox = (item: RedactionItem) => {
     const isSelected = item.id === state.selectedItemId;
     const { x, y, width, height } = item.boundingBox;
 
     let bgStyle: React.CSSProperties = {
-      backgroundColor: '#0f172a',
+      backgroundColor: '#090d16',
       color: '#38bdf8',
     };
 
@@ -297,20 +315,20 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
       bgStyle = {
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
-        backgroundColor: 'rgba(15, 23, 42, 0.65)',
+        backgroundColor: 'rgba(9, 13, 22, 0.7)',
         color: '#a5f3fc',
       };
     } else if (item.mode === 'pixelate') {
       bgStyle = {
-        backgroundColor: 'rgba(30, 41, 59, 0.9)',
-        backgroundImage: 'radial-gradient(#475569 1px, transparent 1px)',
-        backgroundSize: '8px 8px',
+        backgroundColor: 'rgba(15, 23, 42, 0.92)',
+        backgroundImage: 'radial-gradient(#38bdf8 1px, transparent 1px)',
+        backgroundSize: '6px 6px',
         color: '#f8fafc',
       };
     } else if (item.mode === 'semantic_label') {
       bgStyle = {
-        backgroundColor: '#1e293b',
-        border: '1.5px solid #0284c7',
+        backgroundColor: '#0f172a',
+        border: '1.5px solid #2563eb',
         color: '#38bdf8',
       };
     }
@@ -332,16 +350,16 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: Math.max(9, Math.min(13, height * 0.45)),
+          fontSize: Math.max(9, Math.min(12, height * 0.45)),
           fontWeight: 600,
           fontFamily: 'var(--font-mono, monospace)',
           borderRadius: item.mode === 'semantic_label' ? '4px' : '2px',
           outline: isSelected ? '2px solid #38bdf8' : '1px dashed rgba(56, 189, 248, 0.6)',
           outlineOffset: isSelected ? '2px' : '0px',
-          boxShadow: isSelected ? '0 0 10px rgba(56, 189, 248, 0.4)' : 'none',
+          boxShadow: isSelected ? '0 0 12px rgba(56, 189, 248, 0.5)' : 'none',
           zIndex: isSelected ? 100 : 10,
           overflow: 'hidden',
-          padding: '2px',
+          padding: '2px 4px',
           ...bgStyle,
         }}
         title={`${item.label} (${item.mode}) - Click & drag to move`}
@@ -350,7 +368,6 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
           {item.label}
         </span>
 
-        {/* Resize Handle on bottom-right corner when selected */}
         {isSelected && (
           <div
             id={`resize-handle-${item.id}`}
@@ -383,152 +400,111 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
         height: '100%',
         backgroundColor: '#090d16',
         color: '#f8fafc',
-        borderRadius: '8px',
+        borderRadius: '10px',
         overflow: 'hidden',
-        border: '1px solid rgba(56, 189, 248, 0.2)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
       }}
     >
-      {/* 1. Header & Controls Toolbar */}
+      {/* 1. Streamlined Modern Toolbar with Clear Visual Hierarchy */}
       <div
         className="editor-toolbar"
         style={{
           display: 'flex',
-          flexWrap: 'wrap',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '8px 12px',
           backgroundColor: '#0f172a',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
           gap: '8px',
+          flexWrap: 'nowrap',
         }}
       >
-        {/* Undo / Redo */}
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <button
-            id="btn-undo"
-            onClick={() => setState((prev) => undo(prev))}
-            disabled={state.historyIndex <= 0}
-            style={{
-              background: '#1e293b',
-              border: '1px solid #334155',
-              color: state.historyIndex <= 0 ? '#475569' : '#f8fafc',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              cursor: state.historyIndex <= 0 ? 'not-allowed' : 'pointer',
-            }}
-            title="Undo (Ctrl+Z)"
-          >
-            ↺ Undo
-          </button>
-          <button
-            id="btn-redo"
-            onClick={() => setState((prev) => redo(prev))}
-            disabled={state.historyIndex >= state.history.length - 1}
-            style={{
-              background: '#1e293b',
-              border: '1px solid #334155',
-              color: state.historyIndex >= state.history.length - 1 ? '#475569' : '#f8fafc',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              cursor: state.historyIndex >= state.history.length - 1 ? 'not-allowed' : 'pointer',
-            }}
-            title="Redo (Ctrl+Y)"
-          >
-            ↻ Redo
-          </button>
-        </div>
-
-        {/* Zoom Controls */}
+        {/* Left: Compact Icon-Only Utility Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <button
-            id="btn-zoom-out"
-            onClick={() => setState((prev) => setZoom(prev, prev.zoom - 0.2))}
-            style={{
-              background: '#1e293b',
-              border: '1px solid #334155',
-              color: '#f8fafc',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              cursor: 'pointer',
-            }}
-            title="Zoom Out"
-          >
-            -
-          </button>
-          <span style={{ fontSize: '11px', minWidth: '42px', textAlign: 'center', fontFamily: 'monospace' }}>
-            {Math.round(state.zoom * 100)}%
-          </span>
-          <button
-            id="btn-zoom-in"
-            onClick={() => setState((prev) => setZoom(prev, prev.zoom + 0.2))}
-            style={{
-              background: '#1e293b',
-              border: '1px solid #334155',
-              color: '#f8fafc',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              cursor: 'pointer',
-            }}
-            title="Zoom In"
-          >
-            +
-          </button>
-          <button
-            id="btn-zoom-fit"
-            onClick={() => handleAutoFit()}
-            style={{
-              background: 'rgba(56, 189, 248, 0.15)',
-              border: '1px solid rgba(56, 189, 248, 0.4)',
-              color: '#38bdf8',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-            title="Auto-Fit to Window"
-          >
-            ⛶ Fit
-          </button>
-          <button
-            id="btn-zoom-reset"
-            onClick={() => setState((prev) => setZoom(setPan(prev, { x: 0, y: 0 }), 1.0))}
-            style={{
-              background: '#1e293b',
-              border: '1px solid #334155',
-              color: '#94a3b8',
-              padding: '4px 6px',
-              borderRadius: '4px',
-              fontSize: '10px',
-              cursor: 'pointer',
-            }}
-            title="Reset to 100%"
-          >
-            100%
-          </button>
+          {/* History Undo / Redo */}
+          <div style={{ display: 'flex', gap: '2px', background: 'rgba(255, 255, 255, 0.04)', padding: '2px', borderRadius: '6px' }}>
+            <button
+              id="btn-undo"
+              onClick={() => setState((prev) => undo(prev))}
+              disabled={state.historyIndex <= 0}
+              className="toolbar-btn-icon"
+              title="Undo (Ctrl+Z)"
+            >
+              <UndoIcon size={13} />
+            </button>
+            <button
+              id="btn-redo"
+              onClick={() => setState((prev) => redo(prev))}
+              disabled={state.historyIndex >= state.history.length - 1}
+              className="toolbar-btn-icon"
+              title="Redo (Ctrl+Y)"
+            >
+              <RedoIcon size={13} />
+            </button>
+          </div>
+
+          <div style={{ width: '1px', height: '16px', background: 'rgba(255, 255, 255, 0.1)', margin: '0 2px' }} />
+
+          {/* Zoom Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255, 255, 255, 0.04)', padding: '2px', borderRadius: '6px' }}>
+            <button
+              id="btn-zoom-out"
+              onClick={() => setState((prev) => setZoom(prev, prev.zoom - 0.15))}
+              className="toolbar-btn-icon"
+              title="Zoom Out"
+            >
+              <ZoomOutIcon size={13} />
+            </button>
+            <span style={{ fontSize: '11px', minWidth: '38px', textAlign: 'center', fontFamily: 'monospace', color: '#94a3b8' }}>
+              {Math.round(state.zoom * 100)}%
+            </span>
+            <button
+              id="btn-zoom-in"
+              onClick={() => setState((prev) => setZoom(prev, prev.zoom + 0.15))}
+              className="toolbar-btn-icon"
+              title="Zoom In"
+            >
+              <ZoomInIcon size={13} />
+            </button>
+            <button
+              id="btn-zoom-fit"
+              onClick={() => handleAutoFit()}
+              className="toolbar-btn-icon"
+              title="Auto-Fit"
+              style={{ color: '#38bdf8' }}
+            >
+              <FitIcon size={13} />
+            </button>
+          </div>
         </div>
 
-        {/* Comparison Modes */}
-        <div style={{ display: 'flex', gap: '4px', backgroundColor: '#1e293b', padding: '2px', borderRadius: '4px' }}>
+        {/* Center: View Mode Segmented Pill */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '2px',
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            padding: '2px',
+            borderRadius: '6px',
+          }}
+        >
           {(['sanitized', 'original', 'split'] as ComparisonMode[]).map((mode) => (
             <button
               key={mode}
               id={`btn-mode-${mode}`}
               onClick={() => setState((prev) => setComparisonMode(prev, mode))}
               style={{
-                background: state.comparisonMode === mode ? '#0284c7' : 'transparent',
+                background: state.comparisonMode === mode ? '#2563eb' : 'transparent',
                 border: 'none',
                 color: state.comparisonMode === mode ? '#ffffff' : '#94a3b8',
-                padding: '4px 8px',
-                borderRadius: '3px',
+                padding: '3px 8px',
+                borderRadius: '4px',
                 fontSize: '11px',
                 fontWeight: 600,
                 textTransform: 'capitalize',
                 cursor: 'pointer',
+                transition: 'all 0.15s',
               }}
             >
               {mode}
@@ -536,46 +512,52 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
           ))}
         </div>
 
-        {/* Workflow Approval / Cancel */}
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button
-            id="btn-approve"
-            onClick={handleApprove}
-            style={{
-              background: 'linear-gradient(135deg, #059669, #0d9488)',
-              border: 'none',
-              color: '#ffffff',
-              padding: '5px 12px',
-              borderRadius: '4px',
-              fontWeight: 600,
-              fontSize: '11px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <span>✓</span> Approve
-          </button>
+        {/* Right: Primary Action (Approve) & Secondary (Cancel) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <button
             id="btn-cancel"
             onClick={handleCancel}
             style={{
-              background: '#334155',
-              border: 'none',
-              color: '#cbd5e1',
+              background: 'transparent',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#94a3b8',
               padding: '5px 10px',
-              borderRadius: '4px',
-              fontSize: '11px',
+              borderRadius: '6px',
+              fontSize: '11.5px',
+              fontWeight: 500,
               cursor: 'pointer',
+              transition: 'all 0.15s',
             }}
           >
             Cancel
           </button>
+          <button
+            id="btn-approve"
+            onClick={handleApprove}
+            className="btn-approve-primary"
+            style={{
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              border: '1px solid rgba(16, 185, 129, 0.5)',
+              color: '#ffffff',
+              padding: '5px 14px',
+              borderRadius: '6px',
+              fontWeight: 700,
+              fontSize: '11.5px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)',
+              transition: 'all 0.15s',
+            }}
+          >
+            <CheckIcon size={14} />
+            <span>Approve</span>
+          </button>
         </div>
       </div>
 
-      {/* 2. Main Viewport & Interactive Canvas */}
+      {/* 2. Interactive Canvas Viewport (Auto-fits nicely) */}
       <div
         ref={containerRef}
         className="preview-viewport-container"
@@ -585,13 +567,12 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
         style={{
           position: 'relative',
           flex: 1,
-          minHeight: '260px',
+          minHeight: '280px',
           overflow: 'hidden',
-          backgroundColor: '#020617',
+          backgroundColor: '#050811',
           cursor: isPanning ? 'grabbing' : isCreatingBox ? 'crosshair' : 'default',
         }}
       >
-        {/* Scaled and panned viewport content */}
         <div
           style={{
             position: 'absolute',
@@ -602,11 +583,10 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
             transition: isPanning || isMovingBox || isResizingBox ? 'none' : 'transform 0.05s ease-out',
           }}
         >
-          {/* Base Image */}
           {originalImageUrl ? (
             <img
               src={originalImageUrl}
-              alt="Viewport"
+              alt="Context Preview"
               onLoad={handleImageLoad}
               draggable={false}
               style={{
@@ -614,6 +594,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
                 maxWidth: 'none',
                 pointerEvents: 'none',
                 userSelect: 'none',
+                borderRadius: '4px',
               }}
             />
           ) : (
@@ -633,7 +614,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
             </div>
           )}
 
-          {/* Redactions Overlay (Rendered in 'sanitized' or 'split' modes) */}
+          {/* Redactions Overlay */}
           {(state.comparisonMode === 'sanitized' || state.comparisonMode === 'split') && (
             <div
               style={{
@@ -652,7 +633,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
             </div>
           )}
 
-          {/* Currently drawing box */}
+          {/* Dragging New Redaction Box */}
           {currentDragBox && (
             <div
               style={{
@@ -662,7 +643,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
                 width: `${currentDragBox.width}px`,
                 height: `${currentDragBox.height}px`,
                 border: '2px dashed #38bdf8',
-                backgroundColor: 'rgba(56, 189, 248, 0.25)',
+                backgroundColor: 'rgba(56, 189, 248, 0.2)',
                 pointerEvents: 'none',
                 zIndex: 200,
               }}
@@ -670,7 +651,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
           )}
         </div>
 
-        {/* Split comparison divider handle */}
+        {/* Split Divider Handle */}
         {state.comparisonMode === 'split' && (
           <div
             style={{
@@ -678,10 +659,11 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
               top: 0,
               bottom: 0,
               left: `${state.splitPosition}%`,
-              width: '4px',
+              width: '3px',
               backgroundColor: '#38bdf8',
               cursor: 'ew-resize',
               zIndex: 300,
+              boxShadow: '0 0 8px rgba(56, 189, 248, 0.8)',
             }}
           >
             <input
@@ -704,30 +686,41 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
         )}
       </div>
 
-      {/* 3. Selected Redaction Inspector / Property Panel */}
-      {selectedItem && (
+      {/* 3. Redaction Inspector & Clean Details List */}
+      {selectedItem ? (
         <div
           className="redaction-inspector"
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '6px 12px',
+            padding: '8px 12px',
             backgroundColor: '#0f172a',
             borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            fontSize: '11px',
+            fontSize: '11.5px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#38bdf8', fontWeight: 600 }}>{selectedItem.label}</span>
-            <span style={{ color: '#64748b' }}>
-              ({selectedItem.boundingBox.x}, {selectedItem.boundingBox.y}) -{' '}
-              {selectedItem.boundingBox.width}x{selectedItem.boundingBox.height}px
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <span
+              style={{
+                background: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                fontWeight: 600,
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono, monospace)',
+                textOverflow: 'ellipsis',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {selectedItem.label}
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ color: '#94a3b8' }}>Type:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <label style={{ color: '#94a3b8', fontSize: '11px' }}>Mask Style:</label>
             <select
               id="select-redaction-mode"
               value={selectedItem.mode}
@@ -739,15 +732,15 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
               style={{
                 background: '#1e293b',
                 color: '#f8fafc',
-                border: '1px solid #334155',
-                borderRadius: '4px',
-                padding: '2px 6px',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '6px',
+                padding: '3px 8px',
                 fontSize: '11px',
                 cursor: 'pointer',
               }}
             >
-              <option value="semantic_label">Semantic Label</option>
               <option value="solid_rectangle">Solid Box</option>
+              <option value="semantic_label">Semantic Label</option>
               <option value="blur">Blur</option>
               <option value="pixelate">Pixelate</option>
             </select>
@@ -756,37 +749,44 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
               id="btn-remove-redaction"
               onClick={() => setState((prev) => removeRedaction(prev, selectedItem.id))}
               style={{
-                background: 'rgba(244, 63, 94, 0.15)',
-                border: '1px solid rgba(244, 63, 94, 0.4)',
+                background: 'rgba(244, 63, 94, 0.12)',
+                border: '1px solid rgba(244, 63, 94, 0.3)',
                 color: '#fb7185',
-                borderRadius: '4px',
-                padding: '2px 8px',
+                borderRadius: '6px',
+                padding: '3px 8px',
                 fontSize: '11px',
+                fontWeight: 600,
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
               }}
+              title="Remove this redaction"
             >
-              Remove
+              <TrashIcon size={12} />
+              <span>Remove</span>
             </button>
           </div>
         </div>
+      ) : (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 12px',
+            backgroundColor: '#0f172a',
+            borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+            fontSize: '11px',
+            color: '#64748b',
+          }}
+        >
+          <span>Tip: Click & drag on image to redact any custom region</span>
+          <span style={{ color: '#94a3b8', fontWeight: 500 }}>
+            {state.items.length} Redaction{state.items.length === 1 ? '' : 's'} Active
+          </span>
+        </div>
       )}
-
-      {/* 4. Bottom Audit / Instructions */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          padding: '4px 12px',
-          fontSize: '10px',
-          color: '#64748b',
-          backgroundColor: '#090d16',
-        }}
-      >
-        <span>
-          Click & drag on blank area to add redaction • Drag box to move • Drag corner to resize
-        </span>
-        <span style={{ color: '#38bdf8' }}>{state.items.length} Redaction(s) Active</span>
-      </div>
     </div>
   );
 };

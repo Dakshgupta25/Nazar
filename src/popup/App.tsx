@@ -11,16 +11,19 @@ import { runPrivacyScan } from '../privacy/privacyEngine';
 import { PreviewEditor, SanitizedArtifact } from '../preview';
 import { createRedactionItems } from '../redaction';
 import { ImagePrivacyFilter } from '../imageFilter/ImagePrivacyFilter';
-import { ModelStatusCard } from '../modelManager/ModelStatusCard';
+import { NazarEyeIcon, SettingsIcon, CheckIcon } from './NazarIcons';
+import { SensitiveBadge } from './SensitiveBadge';
+import { EngineStatusModal } from './EngineStatusModal';
 
 export const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [capturedContext, setCapturedContext] = useState<CapturedContextPayload | null>(null);
   const [privacyResult, setPrivacyResult] = useState<PrivacyScanResult | null>(null);
-  const [mainTab, setMainTab] = useState<'browser-agent' | 'image-filter' | 'model-engine'>('browser-agent');
+  const [mainTab, setMainTab] = useState<'browser-agent' | 'image-filter'>('browser-agent');
   const [approvedArtifact, setApprovedArtifact] = useState<SanitizedArtifact | null>(null);
   const [userPrompt, setUserPrompt] = useState<string>('');
+  const [isEngineModalOpen, setIsEngineModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     fetchStatus();
@@ -56,7 +59,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // SIMPLIFIED FLOW: Prompt → Capture → Scan → Preview
+  // FLOW: Prompt → Capture Context → Local Privacy Scan → Interactive Preview
   const handleProceed = () => {
     setLoading(true);
     setError(null);
@@ -64,7 +67,7 @@ export const App: React.FC = () => {
     setApprovedArtifact(null);
 
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-      // Fallback: Create dummy context and scan
+      // Fallback: Create mock context and scan locally
       setTimeout(async () => {
         const dummyContext: CapturedContextPayload = {
           tabId: 1,
@@ -143,16 +146,15 @@ export const App: React.FC = () => {
         try {
           const result = await runPrivacyScan(dummyContext);
           setPrivacyResult(result);
-          console.log('[NAZAR] Privacy scan complete, regions:', result.regions);
         } catch (err: unknown) {
           setError(err instanceof Error ? err.message : 'Privacy scan failed');
         }
         setLoading(false);
-      }, 500);
+      }, 400);
       return;
     }
 
-    // REAL FLOW: Capture from browser
+    // REAL FLOW: Capture from active browser tab
     const message: NazarMessage = {
       id: createMessageId(),
       type: 'CAPTURE_CONTEXT',
@@ -172,11 +174,9 @@ export const App: React.FC = () => {
           setCapturedContext(response.data);
           setError(null);
           
-          // Immediately run privacy scan
           try {
             const result = await runPrivacyScan(response.data);
             setPrivacyResult(result);
-            console.log('[NAZAR] Privacy scan complete, regions:', result.regions);
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'Privacy scan failed');
           }
@@ -194,7 +194,6 @@ export const App: React.FC = () => {
 
   const handleApproveRedactions = (artifact: SanitizedArtifact) => {
     setApprovedArtifact(artifact);
-    console.log('[NAZAR] Redactions approved, ready for agent:', artifact);
   };
 
   const handleReset = () => {
@@ -205,119 +204,89 @@ export const App: React.FC = () => {
     setError(null);
   };
 
+  const eyeState = loading ? 'scanning' : privacyResult ? 'active' : 'idle';
+
   return (
-    <div className="container" style={{ maxWidth: privacyResult ? '800px' : '500px' }}>
-      {/* Header */}
+    <div className="container" style={{ maxWidth: privacyResult ? '800px' : '460px' }}>
+      {/* 1. Header & Live Privacy Status */}
       <header className="header">
         <div className="logo-group">
-          <div className="shield-badge">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
+          <div className="brand-icon-wrapper">
+            <NazarEyeIcon size={26} state={eyeState} />
           </div>
           <div className="title-wrap">
             <h1>NAZAR</h1>
-            <span>Privacy Firewall • Phase 8</span>
+            <span>Local Privacy Firewall</span>
           </div>
         </div>
-        <div className="status-pill">
-          <span className="status-dot"></span>
-          <span>Local Engine Active</span>
-        </div>
+
+        {/* Demoted Status / Diagnostics Trigger */}
+        <button
+          className="status-pill-button"
+          onClick={() => setIsEngineModalOpen(true)}
+          title="Click to view Local Engine Diagnostics"
+        >
+          <span className="status-dot-pulse"></span>
+          <span>100% On-Device</span>
+          <SettingsIcon size={12} color="#64748b" />
+        </button>
       </header>
 
-      {/* Main Feature Tabs */}
-      <div style={{ display: 'flex', gap: '4px', background: 'var(--card-bg)', borderRadius: '8px', padding: '4px', border: '1px solid var(--border-color)' }}>
+      {/* 2. Main Task Segmented Control (Two Core Tasks) */}
+      <div className="segmented-tabs">
         <button
           id="tab-browser-agent"
+          className={`tab-btn ${mainTab === 'browser-agent' ? 'active' : ''}`}
           onClick={() => setMainTab('browser-agent')}
-          style={{
-            flex: 1, padding: '7px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
-            background: mainTab === 'browser-agent' ? 'linear-gradient(135deg, var(--accent-cyan), var(--accent-blue))' : 'transparent',
-            color: mainTab === 'browser-agent' ? '#fff' : 'var(--text-muted)',
-            fontWeight: 600, fontSize: '11px', transition: 'all 0.2s',
-          }}
         >
-          🌐 Browser Agent
+          <span>🌐</span> Browser Agent
         </button>
         <button
           id="tab-image-filter"
+          className={`tab-btn ${mainTab === 'image-filter' ? 'active' : ''}`}
           onClick={() => setMainTab('image-filter')}
-          style={{
-            flex: 1, padding: '7px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
-            background: mainTab === 'image-filter' ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'transparent',
-            color: mainTab === 'image-filter' ? '#fff' : 'var(--text-muted)',
-            fontWeight: 600, fontSize: '11px', transition: 'all 0.2s',
-          }}
         >
-          🛡️ Image Filter
-        </button>
-        <button
-          id="tab-model-engine"
-          onClick={() => setMainTab('model-engine')}
-          style={{
-            flex: 1, padding: '7px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
-            background: mainTab === 'model-engine' ? 'linear-gradient(135deg, #059669, #0d9488)' : 'transparent',
-            color: mainTab === 'model-engine' ? '#fff' : 'var(--text-muted)',
-            fontWeight: 600, fontSize: '11px', transition: 'all 0.2s',
-          }}
-        >
-          ⚙️ Model Engine
+          <span>🖼️</span> Image Sanitizer
         </button>
       </div>
 
-      {/* Model Engine Status Feature (Phase 8) */}
-      {mainTab === 'model-engine' && (
-        <ModelStatusCard />
-      )}
-
-      {/* Image Privacy Filter Feature */}
+      {/* 3. Image Privacy Filter Tab */}
       {mainTab === 'image-filter' && (
-        <ImagePrivacyFilter />
+        <div style={{ marginTop: '4px' }}>
+          <ImagePrivacyFilter />
+        </div>
       )}
 
-      {/* Browser Agent Feature */}
+      {/* 4. Browser Agent Tab */}
       {mainTab === 'browser-agent' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '4px' }}>
           {/* Error Banner */}
           {error && (
             <div className="error-banner">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
-              <div>
-                <strong>Error:</strong> {error}
-              </div>
+              <span>{error}</span>
             </div>
           )}
 
-          {/* STEP 1: Prompt Input + Proceed */}
+          {/* STEP 1: Prompt Input + Action Button */}
           {!privacyResult && !approvedArtifact && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
-                  What would you like the AI to do?
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                  What would you like the AI agent to do?
                 </label>
                 <textarea
                   value={userPrompt}
                   onChange={(e) => setUserPrompt(e.target.value)}
-                  placeholder="e.g., 'Fill out this form automatically' or 'Extract information from this page'"
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: '6px',
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--border-color)',
-                    color: '#f8fafc',
-                    fontFamily: 'system-ui',
-                    fontSize: '13px',
-                    minHeight: '80px',
-                    resize: 'vertical',
-                  }}
+                  placeholder="e.g., 'Fill out this application' or 'Extract the order details from this page'..."
+                  className="agent-prompt-textarea"
                 />
               </div>
+
               <button
                 id="btn-proceed-agent"
                 className="btn-proceed"
@@ -326,12 +295,13 @@ export const App: React.FC = () => {
               >
                 {loading ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⚙️</span>
-                    <span>Processing Privacy Firewall...</span>
+                    <NazarEyeIcon size={18} state="scanning" />
+                    <span>Sanitizing Browser Context...</span>
                   </span>
                 ) : (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>🛡️ Run Local Privacy Firewall & Preview</span>
+                    <NazarEyeIcon size={18} state="active" />
+                    <span>Sanitize & Preview Context</span>
                     <span style={{ fontSize: '14px' }}>→</span>
                   </span>
                 )}
@@ -339,31 +309,49 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* STEP 2: Privacy Scan + Preview */}
+          {/* STEP 2: Privacy Scan + Interactive Preview Editor */}
           {privacyResult && !approvedArtifact && capturedContext && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* Image Info */}
-              <div style={{ background: 'var(--card-bg)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Captured Viewport:</span>
-                  <span style={{ color: '#38bdf8', fontWeight: 600 }}>
-                    {Math.round(capturedContext.dom.viewport.width)} × {Math.round(capturedContext.dom.viewport.height)} px
-                    {capturedContext.dom.viewport.devicePixelRatio > 1 && ` (${capturedContext.dom.viewport.devicePixelRatio}x DPR)`}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Sensitive Elements Found:</span>
-                  <span style={{ color: privacyResult.regions.length > 0 ? '#f87171' : '#10b981', fontWeight: 600 }}>
-                    {privacyResult.regions.length} items
-                  </span>
-                </div>
-              </div>
-
-              {/* Preview Editor (With full auto-fit viewport) */}
+              {/* Scan Status Row */}
               <div
                 style={{
-                  height: '500px',
-                  borderRadius: '8px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: 'var(--bg-card)',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                    Page Context:
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      color: 'var(--text-primary)',
+                      fontWeight: 600,
+                      maxWidth: '180px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={capturedContext.dom.title}
+                  >
+                    {capturedContext.dom.title || capturedContext.dom.url}
+                  </span>
+                </div>
+
+                <SensitiveBadge count={privacyResult.regions.length} size="sm" />
+              </div>
+
+              {/* Interactive Preview Editor */}
+              <div
+                style={{
+                  height: '480px',
+                  borderRadius: '10px',
                   overflow: 'hidden',
                   border: '1px solid var(--border-color)',
                 }}
@@ -388,29 +376,57 @@ export const App: React.FC = () => {
 
           {/* STEP 3: Ready to Send to Agent */}
           {approvedArtifact && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '12px', borderRadius: '6px', color: '#10b981', fontSize: '13px' }}>
-                ✓ Privacy approval locked. Ready to proceed with sanitized context.
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', animation: 'fadeIn 0.2s ease' }}>
+              <div
+                style={{
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  padding: '16px',
+                  borderRadius: '10px',
+                  color: '#34d399',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ background: '#10b981', color: '#090d16', borderRadius: '50%', padding: '4px', display: 'flex' }}>
+                  <CheckIcon size={16} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', color: '#f8fafc', marginBottom: '2px' }}>
+                    Privacy Firewall Locked
+                  </strong>
+                  <span>Sanitized context is approved and ready for the AI browser agent.</span>
+                </div>
               </div>
+
               <button
                 onClick={handleReset}
                 style={{
                   padding: '10px 16px',
-                  background: 'var(--card-bg)',
+                  background: 'var(--bg-card)',
                   border: '1px solid var(--border-color)',
                   color: '#38bdf8',
-                  borderRadius: '6px',
+                  borderRadius: '8px',
                   fontWeight: 600,
-                  fontSize: '13px',
+                  fontSize: '12.5px',
                   cursor: 'pointer',
+                  transition: 'all 0.15s',
                 }}
               >
-                ← Start Over
+                ← Start New Task
               </button>
             </div>
           )}
         </div>
       )}
+
+      {/* Demoted Model Engine Diagnostics Modal */}
+      <EngineStatusModal
+        isOpen={isEngineModalOpen}
+        onClose={() => setIsEngineModalOpen(false)}
+      />
     </div>
   );
 };
