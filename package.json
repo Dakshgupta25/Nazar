@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.308",
@@ -20,10 +21,10 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^26.0.0",
     "typescript": "^5.8.2",
     "vite": "^6.2.1",
     "vite-plugin-static-copy": "^2.3.0",
-    "vitest": "^3.0.8",
-    "jsdom": "^26.0.0"
+    "vitest": "^3.0.8"
   }
 }

@@ -45,9 +45,9 @@ export const App: React.FC = () => {
   const [showModelWizard, setShowModelWizard] = useState<boolean>(!onboardingCompleted);
   const [installedModel, setInstalledModel] = useState<ModelTier>(() => {
     try {
-      return (localStorage.getItem('nazar_installed_model') as ModelTier) || 'balanced';
+      return (localStorage.getItem('nazar_installed_model') as ModelTier) || 'micro';
     } catch {
-      return 'balanced';
+      return 'micro';
     }
   });
 
@@ -450,6 +450,35 @@ export const App: React.FC = () => {
                       popupSize={popupSize}
                     />
                   </div>
+
+                  {/* Proceed button below the redacted image preview */}
+                  <button
+                    id="btn-preview-proceed"
+                    className="btn-proceed"
+                    onClick={() => {
+                      console.info('[NAZAR] Proceed clicked from redacted preview');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '11px 18px',
+                      background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                      color: '#ffffff',
+                      border: '1px solid rgba(59, 130, 246, 0.45)',
+                      borderRadius: '10px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span>Proceed</span>
+                    <span style={{ fontSize: '14px' }}>→</span>
+                  </button>
                 </div>
               )}
 

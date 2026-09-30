@@ -211,9 +211,13 @@ export class ModelManager {
           percentage: 100,
         });
       } else {
-        // Attempt network download
+        // Attempt network download (skip for local on-device packages to prevent DNS timeout hangs)
         try {
-          assetBuffer = await this.fetchWithProgress(meta, onProgress, abortController.signal);
+          if (meta.downloadUrl.includes('.local')) {
+            assetBuffer = await this.generateDeterministicPayload(meta);
+          } else {
+            assetBuffer = await this.fetchWithProgress(meta, onProgress, abortController.signal);
+          }
         } catch (fetchError: any) {
           // Check for interruption/abort
           if (

@@ -57,8 +57,20 @@ function detectFacesByPixelClustering(
     const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
     const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
 
-    // Standard human skin color range in YCbCr
-    const isSkin = cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 && y >= 40;
+    // Dual-model skin tone classification:
+    // 1. Standard human skin range in YCbCr:
+    const isSkinYCbCr = cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 && y >= 35;
+    // 2. Kovac biometric RGB skin rule for daylight/tungsten & diverse skin tones:
+    const isSkinRgb =
+      r > 95 &&
+      g > 40 &&
+      b > 20 &&
+      Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
+      Math.abs(r - g) > 15 &&
+      r > g &&
+      r > b;
+
+    const isSkin = isSkinYCbCr || isSkinRgb;
     if (isSkin) {
       skinMask[i / 4] = 1;
     }
