@@ -46,4 +46,5 @@ export interface PreviewEditorProps {
   domContext?: SanitizedStructuredContext;
   onApprove?: (artifact: SanitizedArtifact) => void;
   onCancel?: () => void;
+  popupSize?: 'S' | 'M' | 'L';
 }

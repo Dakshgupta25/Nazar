@@ -2,13 +2,16 @@
  * NAZAR Editable Preview Editor Component
  *
  * Interactive local canvas and UI allowing the user to review, modify,
- * add, remove, resize, zoom, pan, and compare redactions before approval.
+ * add, remove, resize, zoom, pan, and slide redactions before approval.
  *
- * UI/UX Redesign:
- * - Clear visual hierarchy: Prominent Approve action, subtle utility icon controls.
- * - Auto-fit viewport fills canvas container smoothly without excessive margins.
- * - Streamlined per-redaction item cards without technical coordinate clutter.
- * - 100% local rendering. Never transmits raw content.
+ * Features & Optimizations:
+ * - Removed split view mode for simplified, clear comparison (Sanitized vs Original).
+ * - Fully visible Cancel & Approve action buttons with no truncation or clipping.
+ * - Pan tool (default hand mode) allowing click-and-drag sliding of the image.
+ * - Interactive Zoom slider, Zoom in/out, and Auto-Fit buttons.
+ * - Horizontal and vertical Slide sliders for easy viewport navigation.
+ * - Dynamic aspect-ratio matching: canvas tightly frames the image with zero empty blank space.
+ * - 100% local client-side rendering.
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -20,12 +23,12 @@ import {
   removeRedaction,
   updateRedactionGeometry,
   changeRedactionMode,
+  changeAllRedactionsMode,
   undo,
   redo,
   setZoom,
   setPan,
   setComparisonMode,
-  setSplitPosition,
   selectItem,
   approveWorkflow,
   cancelWorkflow,
@@ -38,6 +41,9 @@ import {
   FitIcon,
   TrashIcon,
   CheckIcon,
+  CloseIcon,
+  HandIcon,
+  PencilIcon,
 } from '../popup/NazarIcons';
 
 export const PreviewEditor: React.FC<PreviewEditorProps> = ({
@@ -46,38 +52,37 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
   domContext,
   onApprove,
   onCancel,
+  popupSize,
 }) => {
   const [state, setState] = useState(() => createInitialPreviewState(initialRedactions));
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [activeTool, setActiveTool] = useState<'pan' | 'redact'>('pan');
+  const [containerWidth, setContainerWidth] = useState<number>(0);
   const hasAutoFittedRef = useRef(false);
+  const prevContainerWidthRef = useRef(0);
 
-  // Auto-fit image to container viewport
-  const handleAutoFit = useCallback((imgW?: number, imgH?: number) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const cW = rect.width > 40 ? rect.width : 540;
-    const cH = rect.height > 40 ? rect.height : 360;
-    const iW = imgW || imageDimensions.width || 600;
-    const iH = imgH || imageDimensions.height || 400;
+  // Auto-fit image to container width so the image completely fills the view with ZERO blank space
+  const handleAutoFit = useCallback(
+    (imgW?: number, _imgH?: number, containerW?: number) => {
+      const currentContainerW = containerW || containerWidth || containerRef.current?.clientWidth || 460;
+      const iW = imgW || imageDimensions.width || 600;
 
-    if (iW <= 0 || iH <= 0) return;
+      if (iW <= 0) return;
 
-    // Calculate scale factor so full image fits in view with slight padding
-    const scaleX = (cW - 12) / iW;
-    const scaleY = (cH - 12) / iH;
-    const fitZoom = Math.max(0.2, Math.min(scaleX, scaleY, 1.2));
-    const roundedZoom = parseFloat(fitZoom.toFixed(2));
+      // Fill the viewport width edge-to-edge
+      const fitZoom = parseFloat((currentContainerW / iW).toFixed(2));
+      const safeZoom = Math.min(4.0, Math.max(0.25, fitZoom));
 
-    const panX = Math.max(0, Math.round((cW - iW * roundedZoom) / 2));
-    const panY = Math.max(0, Math.round((cH - iH * roundedZoom) / 2));
-
-    setState((prev) => ({
-      ...prev,
-      zoom: roundedZoom,
-      pan: { x: panX, y: panY },
-    }));
-  }, [imageDimensions]);
+      setState((prev) => ({
+        ...prev,
+        zoom: safeZoom,
+        pan: { x: 0, y: 0 },
+      }));
+    },
+    [containerWidth, imageDimensions]
+  );
 
   // Handle image load to capture actual dimensions and auto-fit
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -92,17 +97,102 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     }
   };
 
+  // Re-fit whenever popupSize changes (S / M / L switch)
   useEffect(() => {
-    const resizeObserver = new ResizeObserver(() => {
-      if (imageDimensions.width > 0) {
-        handleAutoFit(imageDimensions.width, imageDimensions.height);
+    if (popupSize && imageDimensions.width > 0 && containerRef.current) {
+      const timer = setTimeout(() => {
+        if (containerRef.current) {
+          const w = containerRef.current.clientWidth;
+          setContainerWidth(w);
+          handleAutoFit(imageDimensions.width, imageDimensions.height, w);
+        }
+      }, 30);
+      return () => clearTimeout(timer);
+    }
+  }, [popupSize, imageDimensions.width, imageDimensions.height, handleAutoFit]);
+
+  // Trigger auto-fit when the container WIDTH actually changes
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    prevContainerWidthRef.current = el.clientWidth;
+    setContainerWidth(el.clientWidth);
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const newWidth = Math.round(entry.contentRect.width);
+        if (newWidth > 40 && Math.abs(newWidth - prevContainerWidthRef.current) > 5) {
+          prevContainerWidthRef.current = newWidth;
+          setContainerWidth(newWidth);
+          if (imageDimensions.width > 0) {
+            handleAutoFit(imageDimensions.width, imageDimensions.height, newWidth);
+          }
+        }
       }
     });
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
+
+    resizeObserver.observe(el);
     return () => resizeObserver.disconnect();
   }, [imageDimensions, handleAutoFit]);
+
+  // Calculate dimensions and pan clamping to eliminate any blank black void
+  const cW = containerWidth || containerRef.current?.clientWidth || 460;
+  const naturalW = imageDimensions.width || 600;
+  const naturalH = imageDimensions.height || 400;
+  const renderedW = naturalW * state.zoom;
+  const renderedH = naturalH * state.zoom;
+
+  // Viewport height fits the image height at the auto-fit scale (eliminates blank space above/below)
+  const fitScale = naturalW > 0 ? cW / naturalW : 1;
+  const fittedH = Math.round(naturalH * fitScale);
+  const maxViewportHeight = popupSize === 'S' ? 240 : popupSize === 'M' ? 300 : 380;
+  const minViewportHeight = popupSize === 'S' ? 140 : 160;
+  const viewportHeight = Math.max(minViewportHeight, Math.min(maxViewportHeight, fittedH || (popupSize === 'S' ? 200 : 260)));
+
+  // Bounds for pan so the image stays locked inside the viewport with zero empty margin
+  const minPanX = renderedW > cW ? Math.round(cW - renderedW) : Math.round((cW - renderedW) / 2);
+  const maxPanX = renderedW > cW ? 0 : Math.round((cW - renderedW) / 2);
+
+  const minPanY = renderedH > viewportHeight ? Math.round(viewportHeight - renderedH) : Math.round((viewportHeight - renderedH) / 2);
+  const maxPanY = renderedH > viewportHeight ? 0 : Math.round((viewportHeight - renderedH) / 2);
+
+  const clampPan = (x: number, y: number) => ({
+    x: Math.min(maxPanX, Math.max(minPanX, x)),
+    y: Math.min(maxPanY, Math.max(minPanY, y)),
+  });
+
+  // Stable zoom handler that preserves center-point and applies pan clamping
+  const handleZoomChange = useCallback(
+    (nextZoom: number) => {
+      const safeZoom = Math.min(4.0, Math.max(0.25, parseFloat(nextZoom.toFixed(2))));
+      const zoomOld = state.zoom || 1.0;
+
+      const nextRenderedW = naturalW * safeZoom;
+      const nextRenderedH = naturalH * safeZoom;
+
+      const nextMinPanX = nextRenderedW > cW ? Math.round(cW - nextRenderedW) : Math.round((cW - nextRenderedW) / 2);
+      const nextMaxPanX = nextRenderedW > cW ? 0 : Math.round((cW - nextRenderedW) / 2);
+      const nextMinPanY = nextRenderedH > viewportHeight ? Math.round(viewportHeight - nextRenderedH) : Math.round((viewportHeight - nextRenderedH) / 2);
+      const nextMaxPanY = nextRenderedH > viewportHeight ? 0 : Math.round((viewportHeight - nextRenderedH) / 2);
+
+      // Keep viewport center point invariant during zoom
+      const centerX = (-state.pan.x + cW / 2) / zoomOld;
+      const centerY = (-state.pan.y + viewportHeight / 2) / zoomOld;
+
+      const rawNewPanX = -(centerX * safeZoom - cW / 2);
+      const rawNewPanY = -(centerY * safeZoom - viewportHeight / 2);
+
+      const clampedX = Math.min(nextMaxPanX, Math.max(nextMinPanX, Math.round(rawNewPanX)));
+      const clampedY = Math.min(nextMaxPanY, Math.max(nextMinPanY, Math.round(rawNewPanY)));
+
+      setState((prev) => ({
+        ...setZoom(prev, safeZoom),
+        pan: { x: clampedX, y: clampedY },
+      }));
+    },
+    [state.zoom, state.pan, naturalW, naturalH, cW, viewportHeight]
+  );
 
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -118,6 +208,22 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
   const [resizeStart, setResizeStart] = useState({ mouseX: 0, mouseY: 0, boxW: 0, boxH: 0 });
 
   const selectedItem = state.items.find((i) => i.id === state.selectedItemId);
+
+  const [defaultMaskMode, setDefaultMaskMode] = useState<RedactionMode>(() => {
+    if (initialRedactions && initialRedactions.length > 0) {
+      return initialRedactions[0].mode || 'solid_rectangle';
+    }
+    return 'solid_rectangle';
+  });
+
+  const handleModeChange = (newMode: RedactionMode) => {
+    setDefaultMaskMode(newMode);
+    if (selectedItem) {
+      setState((prev) => changeRedactionMode(prev, selectedItem.id, newMode));
+    } else {
+      setState((prev) => changeAllRedactionsMode(prev, newMode));
+    }
+  };
 
   // Keyboard shortcut listener for Undo / Redo / Delete
   useEffect(() => {
@@ -144,11 +250,11 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state.selectedItemId]);
 
-  // Convert client mouse coordinates to canvas-space coordinates taking zoom and pan into account
+  // Convert client mouse coordinates to canvas-space coordinates
   const getCanvasCoords = useCallback(
     (clientX: number, clientY: number) => {
-      if (!containerRef.current) return { x: 0, y: 0 };
-      const rect = containerRef.current.getBoundingClientRect();
+      if (!viewportRef.current) return { x: 0, y: 0 };
+      const rect = viewportRef.current.getBoundingClientRect();
       const localX = (clientX - rect.left - state.pan.x) / state.zoom;
       const localY = (clientY - rect.top - state.pan.y) / state.zoom;
       return { x: Math.round(localX), y: Math.round(localY) };
@@ -158,13 +264,18 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
 
   // Handle Canvas Mouse Down
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || e.altKey) {
+    // If pan tool is active or middle-click/alt-click: Pan immediately
+    if (activeTool === 'pan' || e.button === 1 || e.altKey) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - state.pan.x, y: e.clientY - state.pan.y });
       return;
     }
 
-    if (e.target === containerRef.current || (e.target as HTMLElement).tagName === 'IMG') {
+    // In redact tool mode: start drawing a manual redaction box anywhere on canvas
+    if (activeTool === 'redact') {
+      if (state.comparisonMode !== 'sanitized') {
+        setState((prev) => setComparisonMode(prev, 'sanitized'));
+      }
       const coords = getCanvasCoords(e.clientX, e.clientY);
       setState((prev) => selectItem(prev, null));
       setIsCreatingBox(true);
@@ -175,9 +286,10 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
 
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
     if (isPanning) {
-      setState((prev) =>
-        setPan(prev, { x: e.clientX - panStart.x, y: e.clientY - panStart.y })
-      );
+      const rawX = e.clientX - panStart.x;
+      const rawY = e.clientY - panStart.y;
+      const clamped = clampPan(rawX, rawY);
+      setState((prev) => setPan(prev, clamped));
       return;
     }
 
@@ -219,13 +331,13 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
 
     if (isCreatingBox && currentDragBox) {
       setIsCreatingBox(false);
-      if (currentDragBox.width > 15 && currentDragBox.height > 10) {
+      if (currentDragBox.width >= 8 && currentDragBox.height >= 8) {
         const newItem: RedactionItem = {
           id: `manual_${Date.now()}`,
           detectionId: `manual_det_${Date.now()}`,
-          category: 'password',
-          mode: 'solid_rectangle',
-          label: '[CUSTOM REDACTION]',
+          category: 'security_code',
+          mode: defaultMaskMode,
+          label: '[MANUAL REDACTION]',
           boundingBox: {
             x: currentDragBox.x,
             y: currentDragBox.y,
@@ -249,7 +361,10 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
           appliedPadding: 0,
           timestamp: Date.now(),
         };
-        setState((prev) => addRedaction(prev, newItem));
+        setState((prev) => {
+          const withAdded = addRedaction(prev, newItem);
+          return selectItem(withAdded, newItem.id);
+        });
       }
       setCurrentDragBox(null);
     }
@@ -258,7 +373,43 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     if (isResizingBox) setIsResizingBox(false);
   };
 
+  // Mouse wheel: zoom with Ctrl, slide horizontally and vertically with wheel
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.15 : 0.15;
+      handleZoomChange(state.zoom + delta);
+    } else {
+      const nextX = state.pan.x - e.deltaX;
+      const nextY = state.pan.y - e.deltaY;
+      const clamped = clampPan(nextX, nextY);
+      setState((prev) => setPan(prev, clamped));
+    }
+  };
+
+  // Touch event listeners for trackpads / touchscreen devices
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1 && activeTool === 'pan') {
+      setIsPanning(true);
+      setPanStart({ x: e.touches[0].clientX - state.pan.x, y: e.touches[0].clientY - state.pan.y });
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isPanning && e.touches.length === 1) {
+      const rawX = e.touches[0].clientX - panStart.x;
+      const rawY = e.touches[0].clientY - panStart.y;
+      const clamped = clampPan(rawX, rawY);
+      setState((prev) => setPan(prev, clamped));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (isPanning) setIsPanning(false);
+  };
+
   const handleBoxMouseDown = (e: React.MouseEvent, item: RedactionItem) => {
+    if (activeTool === 'pan') return; // In pan mode, pass through to panning
     e.stopPropagation();
     setState((prev) => selectItem(prev, item.id));
     setIsMovingBox(true);
@@ -301,33 +452,35 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     }
   };
 
-  // Render Redaction Box with clean visual style
+  // Render Redaction Box
   const renderRedactionBox = (item: RedactionItem) => {
     const isSelected = item.id === state.selectedItemId;
     const { x, y, width, height } = item.boundingBox;
 
     let bgStyle: React.CSSProperties = {
-      backgroundColor: '#090d16',
+      backgroundColor: '#070b16',
+      border: '1px solid rgba(59, 130, 246, 0.3)',
       color: '#38bdf8',
     };
 
     if (item.mode === 'blur') {
       bgStyle = {
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
-        backgroundColor: 'rgba(9, 13, 22, 0.7)',
-        color: '#a5f3fc',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        backgroundColor: 'rgba(5, 9, 20, 0.5)',
+        border: '1px solid rgba(34, 211, 238, 0.25)',
+        color: '#22d3ee',
       };
     } else if (item.mode === 'pixelate') {
       bgStyle = {
-        backgroundColor: 'rgba(15, 23, 42, 0.92)',
-        backgroundImage: 'radial-gradient(#38bdf8 1px, transparent 1px)',
+        backgroundColor: 'rgba(10, 16, 32, 0.92)',
+        backgroundImage: 'radial-gradient(#22d3ee 1px, transparent 1px)',
         backgroundSize: '6px 6px',
         color: '#f8fafc',
       };
     } else if (item.mode === 'semantic_label') {
       bgStyle = {
-        backgroundColor: '#0f172a',
+        backgroundColor: 'rgba(13, 20, 36, 0.92)',
         border: '1.5px solid #2563eb',
         color: '#38bdf8',
       };
@@ -345,30 +498,49 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
           width: `${width}px`,
           height: `${height}px`,
           boxSizing: 'border-box',
-          cursor: isMovingBox ? 'grabbing' : 'grab',
+          cursor: activeTool === 'pan' ? 'grab' : isMovingBox ? 'grabbing' : 'pointer',
           userSelect: 'none',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: Math.max(9, Math.min(12, height * 0.45)),
+          fontSize: Math.max(9, Math.min(12, height * 0.42)),
           fontWeight: 600,
           fontFamily: 'var(--font-mono, monospace)',
-          borderRadius: item.mode === 'semantic_label' ? '4px' : '2px',
-          outline: isSelected ? '2px solid #38bdf8' : '1px dashed rgba(56, 189, 248, 0.6)',
-          outlineOffset: isSelected ? '2px' : '0px',
-          boxShadow: isSelected ? '0 0 12px rgba(56, 189, 248, 0.5)' : 'none',
+          borderRadius: item.mode === 'semantic_label' ? '4px' : '3px',
+          outline: isSelected ? '2px solid #22d3ee' : '1px dashed rgba(34, 211, 238, 0.5)',
+          outlineOffset: isSelected ? '1px' : '0px',
+          boxShadow: isSelected ? '0 0 16px rgba(34, 211, 238, 0.45)' : 'none',
           zIndex: isSelected ? 100 : 10,
           overflow: 'hidden',
           padding: '2px 4px',
+          pointerEvents: activeTool === 'pan' ? 'none' : 'auto',
           ...bgStyle,
         }}
-        title={`${item.label} (${item.mode}) - Click & drag to move`}
+        title={`${item.label} (${item.mode}) - Click to select & edit`}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {/* Corner Reticle Brackets for Selected Box */}
+        {isSelected && (
+          <>
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '7px', height: '7px', borderTop: '2px solid #22d3ee', borderLeft: '2px solid #22d3ee', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', top: 0, right: 0, width: '7px', height: '7px', borderTop: '2px solid #22d3ee', borderRight: '2px solid #22d3ee', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: 0, left: 0, width: '7px', height: '7px', borderBottom: '2px solid #22d3ee', borderLeft: '2px solid #22d3ee', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: 0, right: 0, width: '7px', height: '7px', borderBottom: '2px solid #22d3ee', borderRight: '2px solid #22d3ee', pointerEvents: 'none' }} />
+          </>
+        )}
+
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            letterSpacing: '0.4px',
+            textShadow: '0 0 6px rgba(34, 211, 238, 0.5)',
+          }}
+        >
           {item.label}
         </span>
 
-        {isSelected && (
+        {isSelected && activeTool !== 'pan' && (
           <div
             id={`resize-handle-${item.id}`}
             onMouseDown={(e) => handleResizeMouseDown(e, item)}
@@ -378,10 +550,11 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
               bottom: '0',
               width: '10px',
               height: '10px',
-              backgroundColor: '#38bdf8',
+              backgroundColor: '#22d3ee',
               cursor: 'se-resize',
               borderTopLeftRadius: '3px',
               zIndex: 101,
+              boxShadow: '0 0 6px rgba(34, 211, 238, 0.8)',
             }}
             title="Drag to resize"
           />
@@ -392,37 +565,44 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
 
   return (
     <div
+      ref={containerRef}
       className="preview-editor-root"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#090d16',
-        color: '#f8fafc',
-        borderRadius: '10px',
-        overflow: 'hidden',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-      }}
     >
-      {/* 1. Streamlined Modern Toolbar with Clear Visual Hierarchy */}
-      <div
-        className="editor-toolbar"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 12px',
-          backgroundColor: '#0f172a',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
-          gap: '8px',
-          flexWrap: 'nowrap',
-        }}
-      >
-        {/* Left: Compact Icon-Only Utility Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      {/* 1. Streamlined Modern Toolbar */}
+      <div className="editor-toolbar">
+        {/* Left: Tools, History & Zoom */}
+        <div className="editor-toolbar-left">
+          {/* Tool Mode: Pan vs Select/Draw */}
+          <div className="toolbar-group">
+            <button
+              id="btn-tool-pan"
+              onClick={() => setActiveTool('pan')}
+              className={`toolbar-btn-icon ${activeTool === 'pan' ? 'active' : ''}`}
+              title="Pan & Slide Tool (Drag image to slide)"
+            >
+              <HandIcon size={14} />
+            </button>
+            <button
+              id="btn-tool-redact"
+              data-testid="btn-tool-draw"
+              onClick={() => {
+                setActiveTool('redact');
+                if (state.comparisonMode !== 'sanitized') {
+                  setState((prev) => setComparisonMode(prev, 'sanitized'));
+                }
+              }}
+              className={`toolbar-btn-icon ${activeTool === 'redact' ? 'active' : ''}`}
+              title="Redact / Hide Area (Click & drag with pencil to hide sensitive content)"
+              aria-label="Redact tool"
+            >
+              <PencilIcon size={14} />
+            </button>
+          </div>
+
+          <div className="toolbar-divider" />
+
           {/* History Undo / Redo */}
-          <div style={{ display: 'flex', gap: '2px', background: 'rgba(255, 255, 255, 0.04)', padding: '2px', borderRadius: '6px' }}>
+          <div className="toolbar-group">
             <button
               id="btn-undo"
               onClick={() => setState((prev) => undo(prev))}
@@ -443,134 +623,109 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
             </button>
           </div>
 
-          <div style={{ width: '1px', height: '16px', background: 'rgba(255, 255, 255, 0.1)', margin: '0 2px' }} />
+          <div className="toolbar-divider" />
 
-          {/* Zoom Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255, 255, 255, 0.04)', padding: '2px', borderRadius: '6px' }}>
+          {/* Zoom Controls + Slider */}
+          <div className="toolbar-group zoom-group">
             <button
+              type="button"
               id="btn-zoom-out"
-              onClick={() => setState((prev) => setZoom(prev, prev.zoom - 0.15))}
+              onClick={() => handleZoomChange(state.zoom - 0.15)}
               className="toolbar-btn-icon"
-              title="Zoom Out"
+              title="Zoom Out (-15%)"
             >
               <ZoomOutIcon size={13} />
             </button>
-            <span style={{ fontSize: '11px', minWidth: '38px', textAlign: 'center', fontFamily: 'monospace', color: '#94a3b8' }}>
-              {Math.round(state.zoom * 100)}%
-            </span>
+
+            <input
+              type="range"
+              className="zoom-range-slider"
+              min="25"
+              max="350"
+              value={Math.round(state.zoom * 100)}
+              onChange={(e) => handleZoomChange(Number(e.target.value) / 100)}
+              title={`Zoom: ${Math.round(state.zoom * 100)}%`}
+            />
+
             <button
+              type="button"
               id="btn-zoom-in"
-              onClick={() => setState((prev) => setZoom(prev, prev.zoom + 0.15))}
+              onClick={() => handleZoomChange(state.zoom + 0.15)}
               className="toolbar-btn-icon"
-              title="Zoom In"
+              title="Zoom In (+15%)"
             >
               <ZoomInIcon size={13} />
             </button>
+
             <button
+              type="button"
               id="btn-zoom-fit"
               onClick={() => handleAutoFit()}
-              className="toolbar-btn-icon"
-              title="Auto-Fit"
-              style={{ color: '#38bdf8' }}
+              className="toolbar-btn-icon toolbar-fit-btn"
+              title="Fit View (Zero blank space)"
             >
-              <FitIcon size={13} />
+              <FitIcon size={12} />
+              <span className="fit-btn-label">Fit</span>
             </button>
           </div>
         </div>
 
-        {/* Center: View Mode Segmented Pill */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '2px',
-            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            padding: '2px',
-            borderRadius: '6px',
-          }}
-        >
-          {(['sanitized', 'original', 'split'] as ComparisonMode[]).map((mode) => (
-            <button
-              key={mode}
-              id={`btn-mode-${mode}`}
-              onClick={() => setState((prev) => setComparisonMode(prev, mode))}
-              style={{
-                background: state.comparisonMode === mode ? '#2563eb' : 'transparent',
-                border: 'none',
-                color: state.comparisonMode === mode ? '#ffffff' : '#94a3b8',
-                padding: '3px 8px',
-                borderRadius: '4px',
-                fontSize: '11px',
-                fontWeight: 600,
-                textTransform: 'capitalize',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
+        {/* Right: Mode & Actions pinned to the right corner */}
+        <div className="editor-toolbar-right">
+          {/* View Mode Segmented Pill (Sanitized & Original ONLY, No Split) */}
+          <div className="mode-pill-container">
+            {(['sanitized', 'original'] as ComparisonMode[]).map((mode) => (
+              <button
+                key={mode}
+                id={`btn-mode-${mode}`}
+                onClick={() => setState((prev) => setComparisonMode(prev, mode))}
+                className={`mode-pill-btn ${state.comparisonMode === mode ? 'active' : ''}`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
 
-        {/* Right: Primary Action (Approve) & Secondary (Cancel) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button
-            id="btn-cancel"
-            onClick={handleCancel}
-            style={{
-              background: 'transparent',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: '#94a3b8',
-              padding: '5px 10px',
-              borderRadius: '6px',
-              fontSize: '11.5px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            id="btn-approve"
-            onClick={handleApprove}
-            className="btn-approve-primary"
-            style={{
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              border: '1px solid rgba(16, 185, 129, 0.5)',
-              color: '#ffffff',
-              padding: '5px 14px',
-              borderRadius: '6px',
-              fontWeight: 700,
-              fontSize: '11.5px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)',
-              transition: 'all 0.15s',
-            }}
-          >
-            <CheckIcon size={14} />
-            <span>Approve</span>
-          </button>
+          <div className="toolbar-divider" />
+
+          {/* Primary Action (Approve - Tick) & Secondary (Cancel - Cross) - Icon Only */}
+          <div className="toolbar-actions-group">
+            <button
+              id="btn-cancel"
+              onClick={handleCancel}
+              className="btn-cancel-icon"
+              title="Cancel"
+              aria-label="Cancel"
+            >
+              <CloseIcon size={13} color="#ef4444" />
+            </button>
+            <button
+              id="btn-approve"
+              onClick={handleApprove}
+              className="btn-approve-primary btn-approve-icon"
+              title="Approve"
+              aria-label="Approve"
+            >
+              <CheckIcon size={14} />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 2. Interactive Canvas Viewport (Auto-fits nicely) */}
+      {/* 2. Interactive Canvas Viewport (Auto-fits tightly with NO blank space) */}
       <div
-        ref={containerRef}
-        className="preview-viewport-container"
+        ref={viewportRef}
+        className="preview-viewport-card"
         onMouseDown={handleCanvasMouseDown}
         onMouseMove={handleCanvasMouseMove}
         onMouseUp={handleCanvasMouseUp}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         style={{
-          position: 'relative',
-          flex: 1,
-          minHeight: '280px',
-          overflow: 'hidden',
-          backgroundColor: '#050811',
-          cursor: isPanning ? 'grabbing' : isCreatingBox ? 'crosshair' : 'default',
+          height: `${viewportHeight}px`,
+          cursor: activeTool === 'pan' ? (isPanning ? 'grabbing' : 'grab') : 'crosshair',
         }}
       >
         <div
@@ -594,7 +749,6 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
                 maxWidth: 'none',
                 pointerEvents: 'none',
                 userSelect: 'none',
-                borderRadius: '4px',
               }}
             />
           ) : (
@@ -602,7 +756,7 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
               style={{
                 width: '600px',
                 height: '400px',
-                backgroundColor: '#0f172a',
+                backgroundColor: '#0a1020',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -614,8 +768,8 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
             </div>
           )}
 
-          {/* Redactions Overlay */}
-          {(state.comparisonMode === 'sanitized' || state.comparisonMode === 'split') && (
+          {/* Redactions Overlay - Only shown in Sanitized mode */}
+          {state.comparisonMode === 'sanitized' && (
             <div
               style={{
                 position: 'absolute',
@@ -623,10 +777,6 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
                 left: 0,
                 right: 0,
                 bottom: 0,
-                clipPath:
-                  state.comparisonMode === 'split'
-                    ? `polygon(0 0, ${state.splitPosition}% 0, ${state.splitPosition}% 100%, 0 100%)`
-                    : 'none',
               }}
             >
               {state.items.map(renderRedactionBox)}
@@ -642,151 +792,70 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
                 top: `${currentDragBox.y}px`,
                 width: `${currentDragBox.width}px`,
                 height: `${currentDragBox.height}px`,
-                border: '2px dashed #38bdf8',
-                backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                border: '2px dashed #ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.28)',
+                boxShadow: '0 0 12px rgba(239, 68, 68, 0.45)',
                 pointerEvents: 'none',
                 zIndex: 200,
+                borderRadius: '3px',
               }}
             />
           )}
         </div>
-
-        {/* Split Divider Handle */}
-        {state.comparisonMode === 'split' && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              left: `${state.splitPosition}%`,
-              width: '3px',
-              backgroundColor: '#38bdf8',
-              cursor: 'ew-resize',
-              zIndex: 300,
-              boxShadow: '0 0 8px rgba(56, 189, 248, 0.8)',
-            }}
-          >
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={state.splitPosition}
-              onChange={(e) => setState((prev) => setSplitPosition(prev, Number(e.target.value)))}
-              style={{
-                position: 'absolute',
-                top: '50%',
-                left: '-50px',
-                width: '100px',
-                transform: 'translateY(-50%)',
-                opacity: 0,
-                cursor: 'ew-resize',
-              }}
-            />
-          </div>
-        )}
       </div>
 
-      {/* 3. Redaction Inspector & Clean Details List */}
-      {selectedItem ? (
-        <div
-          className="redaction-inspector"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '8px 12px',
-            backgroundColor: '#0f172a',
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            fontSize: '11.5px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-            <span
-              style={{
-                background: 'rgba(56, 189, 248, 0.15)',
-                color: '#38bdf8',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                fontWeight: 600,
-                fontSize: '11px',
-                fontFamily: 'var(--font-mono, monospace)',
-                textOverflow: 'ellipsis',
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {selectedItem.label}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            <label style={{ color: '#94a3b8', fontSize: '11px' }}>Mask Style:</label>
+      {/* 3. Bottom Redaction Inspector Bar */}
+      <div className="redaction-inspector">
+        {/* Left: Mask Style label + dropdown + Selected Scope */}
+        <div className="inspector-left">
+          <label className="inspector-label">
+            Mask Style :
+          </label>
+          <div className="custom-select-wrapper">
             <select
               id="select-redaction-mode"
-              value={selectedItem.mode}
-              onChange={(e) =>
-                setState((prev) =>
-                  changeRedactionMode(prev, selectedItem.id, e.target.value as RedactionMode)
-                )
-              }
-              style={{
-                background: '#1e293b',
-                color: '#f8fafc',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                borderRadius: '6px',
-                padding: '3px 8px',
-                fontSize: '11px',
-                cursor: 'pointer',
-              }}
+              className="custom-select-control"
+              value={selectedItem ? selectedItem.mode : defaultMaskMode}
+              onChange={(e) => handleModeChange(e.target.value as RedactionMode)}
+              title={selectedItem ? 'Change style for selected redaction' : 'Change style for all redactions'}
             >
               <option value="solid_rectangle">Solid Box</option>
               <option value="semantic_label">Semantic Label</option>
               <option value="blur">Blur</option>
               <option value="pixelate">Pixelate</option>
             </select>
-
-            <button
-              id="btn-remove-redaction"
-              onClick={() => setState((prev) => removeRedaction(prev, selectedItem.id))}
-              style={{
-                background: 'rgba(244, 63, 94, 0.12)',
-                border: '1px solid rgba(244, 63, 94, 0.3)',
-                color: '#fb7185',
-                borderRadius: '6px',
-                padding: '3px 8px',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-              title="Remove this redaction"
-            >
-              <TrashIcon size={12} />
-              <span>Remove</span>
-            </button>
+            <div className="custom-select-chevron">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </div>
           </div>
+          {selectedItem && (
+            <button
+              type="button"
+              className="scope-pill-btn"
+              title="Style applied to currently selected redaction"
+            >
+              Selected
+            </button>
+          )}
         </div>
-      ) : (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '6px 12px',
-            backgroundColor: '#0f172a',
-            borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-            fontSize: '11px',
-            color: '#64748b',
-          }}
-        >
-          <span>Tip: Click & drag on image to redact any custom region</span>
-          <span style={{ color: '#94a3b8', fontWeight: 500 }}>
-            {state.items.length} Redaction{state.items.length === 1 ? '' : 's'} Active
-          </span>
+
+        {/* Right: Remove button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            id="btn-remove-redaction"
+            onClick={() => selectedItem && setState((prev) => removeRedaction(prev, selectedItem.id))}
+            disabled={!selectedItem}
+            className="btn-delete-icon"
+            title={selectedItem ? 'Remove this redaction' : 'Select a redaction to delete'}
+            aria-label="Remove this redaction"
+          >
+            <TrashIcon size={16} />
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 };
+

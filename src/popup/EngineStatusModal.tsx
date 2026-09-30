@@ -100,11 +100,11 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
         style={{
           width: '100%',
           maxWidth: '440px',
-          backgroundColor: '#0f172a',
-          border: '1px solid rgba(56, 189, 248, 0.2)',
-          borderRadius: '14px',
+          backgroundColor: '#0a1020',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          borderRadius: '16px',
           padding: '20px',
-          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(56, 189, 248, 0.1)',
+          boxShadow: '0 24px 60px rgba(0, 0, 0, 0.8), 0 0 24px rgba(37, 99, 235, 0.15)',
           color: '#f8fafc',
           display: 'flex',
           flexDirection: 'column',
@@ -136,6 +136,7 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              transition: 'all 0.15s ease',
             }}
             title="Close"
           >
@@ -146,9 +147,9 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
         {/* Status Guarantee Banner */}
         <div
           style={{
-            background: 'rgba(56, 189, 248, 0.08)',
-            border: '1px solid rgba(56, 189, 248, 0.25)',
-            borderRadius: '10px',
+            background: 'rgba(37, 99, 235, 0.08)',
+            border: '1px solid rgba(59, 130, 246, 0.25)',
+            borderRadius: '12px',
             padding: '12px',
             display: 'flex',
             gap: '10px',
@@ -158,7 +159,7 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
             lineHeight: 1.45,
           }}
         >
-          <div style={{ color: '#38bdf8', marginTop: '2px', flexShrink: 0 }}>
+          <div style={{ color: '#22d3ee', marginTop: '2px', flexShrink: 0 }}>
             <CloudOffIcon size={18} />
           </div>
           <div>
@@ -179,14 +180,15 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
               <div
                 key={key}
                 style={{
-                  background: 'rgba(15, 23, 42, 0.8)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '8px',
+                  background: 'rgba(13, 20, 36, 0.8)',
+                  border: '1px solid rgba(148, 163, 184, 0.12)',
+                  borderRadius: '10px',
                   padding: '10px 12px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: '12px',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -229,14 +231,15 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
                       onClick={() => handleDownload(key)}
                       disabled={loading}
                       style={{
-                        background: 'linear-gradient(135deg, #0284c7, #2563eb)',
-                        border: 'none',
+                        background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                        border: '1px solid rgba(59, 130, 246, 0.4)',
                         color: '#fff',
                         borderRadius: '6px',
                         padding: '4px 10px',
                         fontSize: '11px',
                         fontWeight: 600,
                         cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
                       }}
                     >
                       Enable
@@ -248,8 +251,8 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
           })}
         </div>
 
-        {/* Collapsible Technical Details (Cleanly isolated for developers without cluttering UI) */}
-        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '10px' }}>
+        {/* Collapsible Technical Details */}
+        <div style={{ borderTop: '1px solid rgba(148, 163, 184, 0.12)', paddingTop: '10px' }}>
           <button
             onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
             style={{
@@ -272,8 +275,9 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
               style={{
                 marginTop: '8px',
                 padding: '8px 10px',
-                background: '#090d16',
-                borderRadius: '6px',
+                background: '#050914',
+                border: '1px solid rgba(148, 163, 184, 0.12)',
+                borderRadius: '8px',
                 fontSize: '10px',
                 fontFamily: 'monospace',
                 color: '#94a3b8',
@@ -296,14 +300,15 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
               onClick={handleInstallAll}
               disabled={loading}
               style={{
-                background: 'linear-gradient(135deg, #059669, #0d9488)',
-                border: 'none',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
                 color: '#fff',
-                borderRadius: '6px',
-                padding: '6px 12px',
+                borderRadius: '8px',
+                padding: '6px 14px',
                 fontSize: '12px',
                 fontWeight: 600,
                 cursor: 'pointer',
+                boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)',
               }}
             >
               {loading ? 'Verifying...' : 'Install All Engines'}
@@ -312,14 +317,15 @@ export const EngineStatusModal: React.FC<EngineStatusModalProps> = ({ isOpen, on
           <button
             onClick={onClose}
             style={{
-              background: '#1e293b',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: 'rgba(13, 20, 36, 0.9)',
+              border: '1px solid rgba(148, 163, 184, 0.15)',
               color: '#f8fafc',
-              borderRadius: '6px',
+              borderRadius: '8px',
               padding: '6px 14px',
               fontSize: '12px',
               fontWeight: 500,
               cursor: 'pointer',
+              transition: 'all 0.15s ease',
             }}
           >
             Done

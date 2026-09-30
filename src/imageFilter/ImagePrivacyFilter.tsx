@@ -190,12 +190,12 @@ export const ImagePrivacyFilter: React.FC = () => {
             style={{
               padding: '40px 20px',
               border: isDragOver
-                ? '2px dashed #38bdf8'
-                : '2px dashed rgba(255, 255, 255, 0.12)',
-              borderRadius: '12px',
+                ? '2px dashed #22d3ee'
+                : '2px dashed rgba(148, 163, 184, 0.2)',
+              borderRadius: '14px',
               background: isDragOver
-                ? 'rgba(56, 189, 248, 0.08)'
-                : 'rgba(15, 23, 42, 0.5)',
+                ? 'rgba(37, 99, 235, 0.12)'
+                : 'rgba(13, 20, 36, 0.65)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -212,7 +212,7 @@ export const ImagePrivacyFilter: React.FC = () => {
               accept="image/*"
               style={{ display: 'none' }}
             />
-            <div style={{ marginBottom: '12px', color: '#38bdf8' }}>
+            <div style={{ marginBottom: '12px', color: '#22d3ee' }}>
               <NazarEyeIcon size={36} state="idle" />
             </div>
             <div style={{ fontWeight: 600, fontSize: '14px', color: '#f8fafc', marginBottom: '4px' }}>
@@ -230,9 +230,9 @@ export const ImagePrivacyFilter: React.FC = () => {
         <div
           style={{
             padding: '36px 20px',
-            borderRadius: '12px',
-            background: 'rgba(15, 23, 42, 0.6)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '14px',
+            background: 'rgba(13, 20, 36, 0.85)',
+            border: '1px solid rgba(59, 130, 246, 0.25)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -263,9 +263,9 @@ export const ImagePrivacyFilter: React.FC = () => {
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '10px 14px',
-              background: '#0f172a',
-              borderRadius: '10px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(13, 20, 36, 0.85)',
+              borderRadius: '12px',
+              border: '1px solid rgba(148, 163, 184, 0.14)',
               gap: '8px',
               flexWrap: 'wrap',
             }}
@@ -292,14 +292,15 @@ export const ImagePrivacyFilter: React.FC = () => {
               <button
                 onClick={() => setScanResult(null)}
                 style={{
-                  background: 'transparent',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'rgba(148, 163, 184, 0.08)',
+                  border: '1px solid rgba(148, 163, 184, 0.18)',
                   color: '#94a3b8',
-                  padding: '5px 10px',
-                  borderRadius: '6px',
+                  padding: '5px 12px',
+                  borderRadius: '8px',
                   fontSize: '11px',
                   fontWeight: 500,
                   cursor: 'pointer',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 Upload New
@@ -307,14 +308,15 @@ export const ImagePrivacyFilter: React.FC = () => {
               <button
                 onClick={handleCopyImage}
                 style={{
-                  background: 'rgba(56, 189, 248, 0.1)',
-                  border: '1px solid rgba(56, 189, 248, 0.3)',
-                  color: '#38bdf8',
-                  padding: '5px 10px',
-                  borderRadius: '6px',
+                  background: 'rgba(34, 211, 238, 0.1)',
+                  border: '1px solid rgba(34, 211, 238, 0.3)',
+                  color: '#22d3ee',
+                  padding: '5px 12px',
+                  borderRadius: '8px',
                   fontSize: '11px',
                   fontWeight: 600,
                   cursor: 'pointer',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 Copy Image
@@ -323,14 +325,15 @@ export const ImagePrivacyFilter: React.FC = () => {
                 onClick={handleSaveImage}
                 style={{
                   background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                  border: '1px solid rgba(37, 99, 235, 0.5)',
+                  border: '1px solid rgba(59, 130, 246, 0.45)',
                   color: '#ffffff',
-                  padding: '5px 12px',
-                  borderRadius: '6px',
+                  padding: '5px 14px',
+                  borderRadius: '8px',
                   fontSize: '11px',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
+                  boxShadow: '0 2px 10px rgba(37, 99, 235, 0.35)',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 Save
@@ -339,14 +342,7 @@ export const ImagePrivacyFilter: React.FC = () => {
           </div>
 
           {/* Interactive Preview Editor */}
-          <div
-            style={{
-              height: '460px',
-              borderRadius: '10px',
-              overflow: 'hidden',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-            }}
-          >
+          <div style={{ width: '100%' }}>
             <PreviewEditor
               originalImageUrl={scanResult.dataUrl}
               initialRedactions={scanResult.redactionItems}

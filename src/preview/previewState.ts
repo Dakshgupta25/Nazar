@@ -159,6 +159,27 @@ export function changeRedactionMode(
 }
 
 /**
+ * Changes all redactions' visual modes and records in history.
+ */
+export function changeAllRedactionsMode(
+  state: PreviewState,
+  mode: RedactionMode
+): PreviewState {
+  if (state.items.length === 0) return state;
+  let changed = false;
+  const updated = state.items.map((item) => {
+    if (item.mode !== mode) {
+      changed = true;
+      return { ...item, mode };
+    }
+    return item;
+  });
+
+  if (!changed) return state;
+  return pushHistory(state, updated);
+}
+
+/**
  * Undoes the last redaction edit.
  */
 export function undo(state: PreviewState): PreviewState {

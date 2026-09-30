@@ -56,6 +56,8 @@ export const SensitiveBadge: React.FC<SensitiveBadgeProps> = ({
         fontWeight: 600,
         letterSpacing: '0.01em',
         userSelect: 'none',
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
         transition: 'all 0.2s ease',
         background: isWarning ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.12)',
         color: isWarning ? '#fb7185' : '#34d399',
@@ -74,7 +76,7 @@ export const SensitiveBadge: React.FC<SensitiveBadgeProps> = ({
           flexShrink: 0,
         }}
       />
-      <span>{displayText}</span>
+      <span style={{ whiteSpace: 'nowrap' }}>{displayText}</span>
     </div>
   );
 };
