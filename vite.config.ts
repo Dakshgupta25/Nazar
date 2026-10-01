@@ -5,6 +5,7 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
   base: '',
+  publicDir: false,
   plugins: [
     react(),
     viteStaticCopy({
@@ -14,7 +15,7 @@ export default defineConfig({
           dest: '.',
         },
         {
-          src: 'public/test-page.html',
+          src: 'public/icons',
           dest: '.',
         },
       ],
@@ -50,7 +51,6 @@ export default defineConfig({
       },
     },
   },
-  // @ts-expect-error vitest config
   test: {
     globals: true,
     environment: 'jsdom',
