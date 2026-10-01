@@ -55,7 +55,7 @@ export const App: React.FC = () => {
     setPopupSize(size);
     try {
       localStorage.setItem('nazar_popup_size', size);
-    } catch {}
+    } catch { }
     const dim = POPUP_DIMENSIONS[size];
     if (typeof document !== 'undefined') {
       document.documentElement.style.width = `${dim.width}px`;
@@ -101,7 +101,7 @@ export const App: React.FC = () => {
         applyPopupSize(saved);
         return;
       }
-    } catch {}
+    } catch { }
     applyPopupSize('M');
   }, []);
 
@@ -222,7 +222,7 @@ export const App: React.FC = () => {
           },
         };
         setCapturedContext(dummyContext);
-        
+
         try {
           const result = await runPrivacyScan(dummyContext);
           setPrivacyResult(result);
@@ -249,11 +249,11 @@ export const App: React.FC = () => {
           setLoading(false);
           return;
         }
-        
+
         if (response && response.success && response.data) {
           setCapturedContext(response.data);
           setError(null);
-          
+
           try {
             const result = await runPrivacyScan(response.data);
             setPrivacyResult(result);
@@ -405,6 +405,15 @@ export const App: React.FC = () => {
                       placeholder="e.g., 'Fill out this application' or 'Extract the order details from this page'..."
                       className="agent-prompt-textarea"
                     />
+                  </div>
+
+                  <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.2)', padding: '10px 12px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginTop: '2px', flexShrink: 0 }}>
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    <p style={{ margin: 0, fontSize: '11.5px', color: '#bae6fd', lineHeight: 1.4 }}>
+                      <strong>Privacy Notice:</strong> This action captures your active tab for on-device visual redaction. <strong>Your raw data never leaves this device.</strong>
+                    </p>
                   </div>
 
                   <button

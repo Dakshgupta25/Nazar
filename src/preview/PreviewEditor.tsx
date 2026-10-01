@@ -373,10 +373,22 @@ export const PreviewEditor: React.FC<PreviewEditorProps> = ({
     if (isResizingBox) setIsResizingBox(false);
   };
 
+  // Ensure browser doesn't natively zoom the UI when doing Ctrl+Wheel over the canvas
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const preventZoom = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault(); // Safely called in a { passive: false } context
+      }
+    };
+    el.addEventListener('wheel', preventZoom, { passive: false });
+    return () => el.removeEventListener('wheel', preventZoom);
+  }, []);
+
   // Mouse wheel: zoom with Ctrl, slide horizontally and vertically with wheel
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
       const delta = e.deltaY > 0 ? -0.15 : 0.15;
       handleZoomChange(state.zoom + delta);
     } else {

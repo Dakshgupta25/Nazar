@@ -3,3 +3,8 @@ node_modules/
 *.log
 .env
 .env.*
+nazar-website/
+dist/
+dist-firefox/
+# Do not upload production zip archives
+*.zip

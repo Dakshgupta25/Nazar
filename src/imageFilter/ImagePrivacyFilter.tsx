@@ -124,7 +124,7 @@ export const ImagePrivacyFilter: React.FC = () => {
       return;
     }
 
-    const filename = scanResult?.filename 
+    const filename = scanResult?.filename
       ? `sanitized-${scanResult.filename.replace(/\.[^/.]+$/, '')}.png`
       : 'nazar-sanitized.png';
 
